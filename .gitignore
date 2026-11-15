@@ -1,0 +1,25 @@
+# Variables de entorno locales: el .env real nunca se versiona (plantilla en .env.example)
+.env
+.env.*
+!.env.example
+
+# Dependencias y artefactos de build
+node_modules/
+dist/
+__pycache__/
+*.py[cod]
+.venv/
+
+# Yarn 4 (checkout): solo se versiona el binario de releases
+**/.yarn/*
+!**/.yarn/releases/
+
+# Terraform: providers descargados y estado (el estado puede contener secretos)
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.idea/
