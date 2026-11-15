@@ -11,16 +11,28 @@ Tero es una tienda en línea basada en microservicios. Permite explorar un catá
 
 ## Inicio rápido
 
+1. Crear el archivo `.env` a partir de la plantilla y completar los valores. El `.env` no se versiona (está en `.gitignore`).
+
+```bash
+cp .env.example .env
+```
+
+Usar valores aleatorios de solo letras y números: los comentarios de `.env.example` explican por qué y cómo generarlos (por ejemplo, `openssl rand -hex 32` en Git Bash).
+
+2. Levantar los servicios:
+
 ```bash
 docker compose up --build
 ```
+
+> Si la base de datos ya se había creado con otra contraseña (por ejemplo, con la configuración anterior del repo), catalog, carts y orders fallan al arrancar con `password authentication failed for user "retail_user"`, y admin falla con el mismo error recién al abrir el panel después del login. En ese caso, `docker compose down -v` borra el volumen de la base con todos sus datos, y el próximo `docker compose up --build` la vuelve a crear con la contraseña del `.env`.
 
 | Servicio | URL                   |
 |----------|-----------------------|
 | Tienda   | http://localhost:8080 |
 | Admin    | http://localhost:8081 |
 
-Credenciales del admin por defecto: `admin` / `admin`
+Credenciales del admin: las definidas en `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`).
 
 ## Comandos útiles
 
@@ -124,6 +136,18 @@ docker compose logs -f <servicio>
 
 ## Variables de entorno
 
+Las contraseñas y el secreto JWT no tienen valor por defecto: se definen en `.env` (ver `.env.example`). Si falta alguno, `docker compose` no levanta y dice cuál falta.
+
+### Archivo `.env`
+| Variable            | Descripción                               | Default         |
+|---------------------|-------------------------------------------|-----------------|
+| `POSTGRES_PASSWORD` | Contraseña de `retail_user` en PostgreSQL | *(obligatoria)* |
+| `ADMIN_USERNAME`    | Usuario del panel de administración       | `admin`         |
+| `ADMIN_PASSWORD`    | Contraseña del panel de administración    | *(obligatoria)* |
+| `ADMIN_JWT_SECRET`  | Secreto para firmar los JWT del admin     | *(obligatoria)* |
+
+`docker-compose.yml` le pasa `POSTGRES_PASSWORD` a cada servicio con el nombre que ese servicio espera: `POSTGRES_PASSWORD` (db), `RETAIL_CATALOG_PERSISTENCE_PASSWORD` (catalog), `CART_POSTGRES_PASSWORD` (carts), `RETAIL_ORDERS_PERSISTENCE_PASSWORD` (orders) y `DB_PASSWORD` (admin). Las tablas de abajo usan esos nombres.
+
 ### UI
 | Variable                        | Descripción                  | Default               |
 |---------------------------------|------------------------------|-----------------------|
@@ -137,7 +161,9 @@ docker compose logs -f <servicio>
 |----------------------------------------|-----------------------|------------------|
 | `RETAIL_CATALOG_PERSISTENCE_PROVIDER`  | Tipo de persistencia  | `postgres`       |
 | `RETAIL_CATALOG_PERSISTENCE_ENDPOINT`  | Host:Puerto de la DB  | `db:5432`        |
-| `DB_PASSWORD`                          | Contraseña PostgreSQL | `retailpassword` |
+| `RETAIL_CATALOG_PERSISTENCE_PASSWORD`  | Contraseña PostgreSQL | *(obligatoria)*  |
+| `RETAIL_ORDERS_PERSISTENCE_PASSWORD`   | Contraseña PostgreSQL | *(obligatoria)*  |
+| `CART_POSTGRES_PASSWORD`               | Contraseña PostgreSQL | *(obligatoria)*  |
 
 ### Checkout
 | Variable                                   | Descripción              | Default               |
@@ -150,8 +176,9 @@ docker compose logs -f <servicio>
 | Variable            | Descripción                | Default                   |
 |---------------------|----------------------------|---------------------------|
 | `ADMIN_USERNAME`    | Usuario administrador      | `admin`                   |
-| `ADMIN_PASSWORD`    | Contraseña administrador   | `admin`                   |
-| `ADMIN_JWT_SECRET`  | Secreto para tokens JWT    | `change-me-in-production` |
+| `ADMIN_PASSWORD`    | Contraseña administrador   | *(obligatoria)*           |
+| `ADMIN_JWT_SECRET`  | Secreto para tokens JWT    | *(obligatoria)*           |
+| `DB_PASSWORD`       | Contraseña PostgreSQL      | *(obligatoria)*           |
 
 ---
 
