@@ -1,0 +1,23 @@
+# Qué NO se manda al build. Lo que no entra al contexto no puede terminar en la imagen.
+
+# Secretos y configuración local
+**/.env
+**/.env.*
+**/*.env
+**/.envrc
+**/.npmrc
+
+# Dependencias y compilados: se generan dentro de la imagen
+node_modules
+dist
+coverage
+npm-debug.log*
+
+# Control de versiones, editores y archivos que no hacen falta para construir
+.git
+.gitignore
+.dockerignore
+Dockerfile
+*.md
+.vscode
+.idea

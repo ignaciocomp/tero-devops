@@ -48,6 +48,9 @@ docker compose up --build <servicio>
 
 # Ver logs de un servicio
 docker compose logs -f <servicio>
+
+# Prueba de humo: recorre los seis servicios (con el stack levantado y el .env completo)
+bash scripts/smoke-test.sh
 ```
 
 ---
@@ -110,24 +113,30 @@ docker compose logs -f <servicio>
 
 ## Tecnologías por servicio
 
-| Servicio     | Lenguaje       | Framework        | Runtime         | Persistencia      | Puerto externo |
-|--------------|----------------|------------------|-----------------|-------------------|----------------|
-| **ui**       | TypeScript     | Express          | Node.js 22      | —                 | 8080           |
-| **catalog**  | Go 1.24        | Gin + GORM       | Alpine Linux    | PostgreSQL        | —              |
-| **cart**     | Python 3.12    | FastAPI          | Python slim     | PostgreSQL        | —              |
-| **checkout** | TypeScript     | NestJS           | Node.js 22      | Redis             | —              |
-| **orders**   | Go 1.24        | Gin + GORM       | Alpine Linux    | PostgreSQL        | —              |
-| **admin**    | TypeScript     | Express          | Node.js 22      | PostgreSQL        | 8081           |
-| **db**       | —              | PostgreSQL 16    | —               | —                 | —              |
-| **redis**    | —              | Redis 7          | Alpine Linux    | —                 | —              |
+| Servicio     | Lenguaje    | Framework     | Imagen final                     | Persistencia | Puerto externo |
+|--------------|-------------|---------------|----------------------------------|--------------|----------------|
+| **ui**       | TypeScript  | Express       | `distroless/nodejs22-debian13`   | —            | 8080           |
+| **catalog**  | Go 1.24     | Gin + GORM    | `distroless/base-nossl-debian13` | PostgreSQL   | —              |
+| **carts**    | Python 3.12 | FastAPI       | `python:3.12-slim-trixie`        | PostgreSQL   | —              |
+| **checkout** | TypeScript  | NestJS        | `distroless/nodejs22-debian13`   | Redis        | —              |
+| **orders**   | Go 1.24     | Gin + GORM    | `distroless/static-debian13`     | PostgreSQL   | —              |
+| **admin**    | TypeScript  | Express       | `distroless/nodejs22-debian13`   | PostgreSQL   | 8081           |
+| **db**       | —           | PostgreSQL 16 | `postgres:16`                    | —            | —              |
+| **redis**    | —           | Redis 7       | `redis:7-alpine`                 | —            | —              |
+
+La columna *Imagen final* abrevia los nombres: los tags exactos (por ejemplo `gcr.io/distroless/nodejs22-debian13:nonroot`) están en el `Dockerfile` de cada servicio.
+
+### Imágenes de contenedor
+
+Cada servicio se construye en dos etapas: una de *build*, con el compilador y las herramientas, y una final mínima que solo tiene lo necesario para ejecutar. Las imágenes finales corren con un usuario sin privilegios y, salvo la de carts, no tienen shell: para diagnosticar se usan los logs (`docker compose logs -f <servicio>`), porque `docker compose exec <servicio> sh` no funciona. Cada servicio tiene su `.dockerignore`, así que archivos como `.env` o `node_modules` nunca entran al build. Para comprobar que el stack responde de punta a punta: `bash scripts/smoke-test.sh`. Detalle, alternativas y mediciones en el [ADR 0001](docs/adr/0001-imagenes-de-contenedor.md).
 
 ### Dependencias clave
 
 | Servicio     | Dependencias destacadas                                               |
 |--------------|-----------------------------------------------------------------------|
 | **catalog**  | `gin-gonic/gin`, `gorm`, `go-gorm/postgres`, OpenTelemetry           |
-| **cart**     | `FastAPI`, `Uvicorn`, `Pydantic`, `psycopg2`, Prometheus client       |
-| **checkout** | `NestJS`, `ioredis`, `class-validator`, OpenTelemetry                 |
+| **carts**    | `FastAPI`, `Uvicorn`, `Pydantic`, `psycopg2`, Prometheus client       |
+| **checkout** | `NestJS`, `ioredis`, `class-validator`, `@nestjs/swagger`             |
 | **orders**   | `gin-gonic/gin`, `gorm`, `go-gorm/postgres`, Prometheus              |
 | **ui**       | `express`, `http-proxy-middleware`                                    |
 | **admin**    | `express`, `pg`, `jsonwebtoken`, `cookie-parser`                      |
@@ -185,12 +194,17 @@ Las contraseñas y el secreto JWT no tienen valor por defecto: se definen en `.e
 ## Estructura del repositorio
 
 ```
-app/
+tero-devops/
+├── .env.example        # Plantilla de variables (el .env real no se versiona)
 ├── docker-compose.yml
 ├── init-db.sql
+├── docs/
+│   └── adr/            # Decisiones de arquitectura (ADR)
+├── scripts/
+│   └── smoke-test.sh   # Prueba de humo del stack
 └── src/
     ├── catalog/        # Go - Catálogo de productos
-    ├── cart/           # Python - Carrito de compras
+    ├── cart/           # Python - Carrito de compras (servicio carts)
     ├── checkout/       # TypeScript/NestJS - Proceso de pago
     ├── orders/         # Go - Gestión de órdenes
     ├── ui/             # TypeScript/Express - Frontend
