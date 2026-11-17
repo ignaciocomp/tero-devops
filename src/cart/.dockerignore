@@ -1,0 +1,27 @@
+# Qué NO se manda al build. Lo que no entra al contexto no puede terminar en la imagen.
+
+# Secretos y configuración local
+**/.env
+**/.env.*
+**/*.env
+**/.envrc
+**/.npmrc
+
+# Entornos virtuales y archivos que generan Python y las pruebas
+**/.venv
+**/venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+
+# Control de versiones, editores y archivos que no hacen falta para construir
+.git
+.gitignore
+.dockerignore
+Dockerfile
+*.md
+.vscode
+.idea

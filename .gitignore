@@ -10,9 +10,16 @@ __pycache__/
 *.py[cod]
 .venv/
 
-# Yarn 4 (checkout): solo se versiona el binario de releases
+# Yarn 4 (checkout), como recomienda Yarn sin Zero-Installs: se ignoran la caché, el
+# estado de instalación y los archivos de PnP, pero se versionan releases, plugins,
+# patches, sdks y versions
+**/.pnp.*
 **/.yarn/*
 !**/.yarn/releases/
+!**/.yarn/plugins/
+!**/.yarn/patches/
+!**/.yarn/sdks/
+!**/.yarn/versions/
 
 # Terraform: providers descargados y estado (el estado puede contener secretos)
 .terraform/
