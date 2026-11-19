@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Prueba de humo de Tero: recorre los seis servicios a través de la UI y del panel de admin.
+# Al final comprueba qué publica cada servicio en el host: solo ui y admin, y en 127.0.0.1.
 #
 # Requisitos: el stack levantado (docker compose up -d), el .env completo, curl y node.
 # Uso:        bash scripts/smoke-test.sh [proyecto-de-compose]
@@ -40,10 +41,16 @@ wait_for() { # espera hasta 60 s a que la URL responda algo distinto de 000/502/
   echo "AVISO: $1 no respondió en 60 s (último código: $c)"
 }
 published() { # direcciones que el servicio publica en el host, todas: "docker port" las lista
-  local id ports
-  id="$("${COMPOSE[@]}" ps -q "$1")"
-  if [ -z "$id" ]; then echo "sin-contenedor"; return; fi
-  ports="$(docker port "$id" | tr -d '\r' | sed 's/.* -> //' | sort | paste -sd, -)"
+  local id ids out ports=""
+  ids="$("${COMPOSE[@]}" ps -q "$1")" || { echo "error-de-compose"; return; }
+  if [ -z "$ids" ]; then echo "sin-contenedor"; return; fi
+  for id in $ids; do   # puede haber más de un contenedor si el servicio está escalado
+    # Si docker port falla, la prueba tiene que fallar: un error nunca cuenta como "ninguno"
+    out="$(docker port "$id")" || { echo "error-de-docker-port"; return; }
+    ports="$ports$out"$'\n'
+  done
+  # Solo se sacan las líneas vacías: una salida con otro formato queda en el resultado y la prueba falla
+  ports="$(printf '%s' "$ports" | tr -d '\r' | sed '/^$/d; s/.* -> //' | sort -u | paste -sd, -)"
   echo "${ports:-ninguno}"
 }
 
@@ -85,8 +92,10 @@ check "admin: GET /admin/api/products (lee catalogdb)" 200 "$(code -b "$TMP/jar"
 check "admin: GET /admin/api/orders (lee orders)" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/orders")"
 check "admin: GET /admin/api/orders sin cookie" 401 "$(code "$ADMIN/admin/api/orders")"
 
-check "red: db no publica puertos en el host" ninguno "$(published db)"
-check "red: redis no publica puertos en el host" ninguno "$(published redis)"
+# Red: de los 8 servicios de docker-compose.yml, solo ui y admin se publican en el host, en 127.0.0.1
+for s in db redis catalog carts orders checkout; do
+  check "red: $s no publica puertos en el host" ninguno "$(published "$s")"
+done
 check "red: ui se publica solo en 127.0.0.1:8080" 127.0.0.1:8080 "$(published ui)"
 check "red: admin se publica solo en 127.0.0.1:8081" 127.0.0.1:8081 "$(published admin)"
 
