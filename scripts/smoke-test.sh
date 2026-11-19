@@ -11,8 +11,10 @@ cd "$(dirname "$0")/.." || exit 1
 
 COMPOSE=(docker compose)
 if [ $# -ge 1 ]; then COMPOSE+=(-p "$1"); fi
-UI="http://localhost:8080"
-ADMIN="http://localhost:8081"
+# 127.0.0.1 y no localhost: los puertos se publican solo en IPv4 y, en Windows, algunos
+# clientes prueban primero ::1 y tardan unos 2 s en pasar a IPv4.
+UI="http://127.0.0.1:8080"
+ADMIN="http://127.0.0.1:8081"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 pass=0
@@ -36,6 +38,13 @@ wait_for() { # espera hasta 60 s a que la URL responda algo distinto de 000/502/
     case "$c" in 000|502|503|504) sleep 1 ;; *) return 0 ;; esac
   done
   echo "AVISO: $1 no respondió en 60 s (último código: $c)"
+}
+published() { # direcciones que el servicio publica en el host, todas: "docker port" las lista
+  local id ports
+  id="$("${COMPOSE[@]}" ps -q "$1")"
+  if [ -z "$id" ]; then echo "sin-contenedor"; return; fi
+  ports="$(docker port "$id" | tr -d '\r' | sed 's/.* -> //' | sort | paste -sd, -)"
+  echo "${ports:-ninguno}"
 }
 
 # Los servicios no tienen healthcheck en compose: la UI puede estar arriba antes que los
@@ -75,6 +84,11 @@ check "admin: GET /auth/me con la cookie" 200 "$(code -b "$TMP/jar" "$ADMIN/auth
 check "admin: GET /admin/api/products (lee catalogdb)" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/products")"
 check "admin: GET /admin/api/orders (lee orders)" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/orders")"
 check "admin: GET /admin/api/orders sin cookie" 401 "$(code "$ADMIN/admin/api/orders")"
+
+check "red: db no publica puertos en el host" ninguno "$(published db)"
+check "red: redis no publica puertos en el host" ninguno "$(published redis)"
+check "red: ui se publica solo en 127.0.0.1:8080" 127.0.0.1:8080 "$(published ui)"
+check "red: admin se publica solo en 127.0.0.1:8081" 127.0.0.1:8081 "$(published admin)"
 
 echo "---"
 echo "Resultado: $pass OK, $fail fallas"

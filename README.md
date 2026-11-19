@@ -29,10 +29,42 @@ docker compose up --build
 
 | Servicio | URL                   |
 |----------|-----------------------|
-| Tienda   | http://localhost:8080 |
-| Admin    | http://localhost:8081 |
+| Tienda   | http://127.0.0.1:8080 |
+| Admin    | http://127.0.0.1:8081 |
 
 Credenciales del admin: las definidas en `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`).
+
+## Red y puertos
+
+Solo la tienda y el panel de admin se publican en el host, y únicamente en `127.0.0.1`: no se puede llegar a ellos desde otra máquina de la red. La base de datos, Redis y los demás servicios no publican puertos y se comunican por la red interna de compose.
+
+| Servicio                                | Desde el host    | Dentro de compose  |
+|-----------------------------------------|------------------|--------------------|
+| `ui`                                    | `127.0.0.1:8080` | `ui:8080`          |
+| `admin`                                 | `127.0.0.1:8081` | `admin:8080`       |
+| `db`                                    | no publicado     | `db:5432`          |
+| `redis`                                 | no publicado     | `redis:6379`       |
+| `catalog`, `carts`, `orders`, `checkout`| no publicados    | `<servicio>:8080`  |
+
+Usar `127.0.0.1` y no `localhost`: en Windows, algunos clientes prueban primero IPv6 y tardan unos 2 segundos en pasar a IPv4.
+
+Para consultar la base o Redis no hace falta publicarlos:
+
+```bash
+docker compose exec db psql -U retail_user -d orders
+docker compose exec redis redis-cli
+```
+
+Si se necesita un cliente gráfico, crear un `docker-compose.override.yml` (no se versiona) que publique la base solo en `127.0.0.1`. Con ese archivo presente, la prueba de humo marca como falla la prueba de red de `db`.
+
+```yaml
+services:
+  db:
+    ports:
+      - "127.0.0.1:5433:5432"
+```
+
+> Si compose recrea `db`, carts no se reconecta y responde 500 hasta reiniciarlo: `docker compose restart carts`.
 
 ## Comandos útiles
 

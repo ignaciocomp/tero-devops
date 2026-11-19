@@ -161,7 +161,7 @@ En este Docker Desktop, `docker stop` esperó unos 3,5 s antes del `SIGKILL`. En
 orders se midió contra una base de PostgreSQL descartable. admin, con variables de prueba (no necesita la base para arrancar).
 
 **Otras verificaciones:**
-- `bash scripts/smoke-test.sh` pasa las 19 pruebas de punta a punta con las imágenes nuevas: catálogo, carrito en `cartdb`, checkout en Redis, creación de órdenes y login del admin (con las credenciales viejas tiene que dar 401).
+- `bash scripts/smoke-test.sh` pasa las 19 pruebas que tenía a esa fecha, de punta a punta con las imágenes nuevas: catálogo, carrito en `cartdb`, checkout en Redis, creación de órdenes y login del admin (con las credenciales viejas tiene que dar 401).
 - catalog en modo in-memory responde (`/catalog/size` devuelve 11) y arranca en modo release, lo que confirma que SQLite funciona sobre `base-nossl`.
 - Se pusieron archivos `.env` de prueba dentro de ui, orders y checkout, y ninguno llegó a la etapa de build.
 - `docker export` de cada imagen final:
@@ -186,7 +186,7 @@ gcr.io/distroless/static-debian13:nonroot      sha256:aafe993665bf6200db38a02c11
 
 ```bash
 docker compose build --pull && docker compose up -d
-bash scripts/smoke-test.sh                       # 19 pruebas de punta a punta
+bash scripts/smoke-test.sh                       # prueba de punta a punta (19 pruebas a esa fecha)
 docker image ls                                  # tamaños (DISK USAGE y CONTENT SIZE)
 docker compose top                               # usuario (UID) de cada proceso
 docker compose stop ui && docker compose ps -a ui   # tiene que decir "Exited (143)"; 137 sería SIGKILL

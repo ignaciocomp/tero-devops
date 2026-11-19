@@ -8,8 +8,7 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
-    ports:
-      - "5433:5432"
+    # Sin "ports": solo se llega desde la red interna de compose (db:5432)
     healthcheck:
       # -h 127.0.0.1 fuerza TCP: durante el init el server temporal solo escucha en socket Unix
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U retail_user -d orders"]
@@ -20,8 +19,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # Sin "ports": solo se llega desde la red interna de compose (redis:6379)
 
   catalog:
     build:
@@ -89,7 +87,7 @@ services:
       RETAIL_UI_ENDPOINTS_CHECKOUT: http://checkout:8080
       RETAIL_UI_ENDPOINTS_ORDERS:   http://orders:8080
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       - catalog
       - carts
@@ -108,7 +106,7 @@ services:
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Falta ADMIN_PASSWORD en .env (ver .env.example)}"
       ADMIN_JWT_SECRET: "${ADMIN_JWT_SECRET:?Falta ADMIN_JWT_SECRET en .env (ver .env.example)}"
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     restart: on-failure
     depends_on:
       db:

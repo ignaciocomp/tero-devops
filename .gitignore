@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Ajustes locales de compose, como publicar la base para un cliente SQL
+docker-compose.override.yml
+
 # Dependencias y artefactos de build
 node_modules/
 dist/
