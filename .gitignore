@@ -3,8 +3,12 @@
 .env.*
 !.env.example
 
-# Ajustes locales de compose, como publicar la base para un cliente SQL
+# Ajustes locales de compose, como publicar la base para un cliente SQL. Compose carga
+# automáticamente cualquiera de estos cuatro nombres, así que se ignoran todos
 docker-compose.override.yml
+docker-compose.override.yaml
+compose.override.yml
+compose.override.yaml
 
 # Dependencias y artefactos de build
 node_modules/
