@@ -6,7 +6,7 @@ Tero es una tienda en línea basada en microservicios. Permite explorar un catá
 
 ## Requisitos previos
 
-- [Docker](https://docs.docker.com/get-docker/) 24+
+- [Docker](https://docs.docker.com/get-docker/) 24+ (en Linux, Docker Engine 28+: ver [Red y puertos](#red-y-puertos))
 - [Docker Compose](https://docs.docker.com/compose/install/) v2.20+
 
 ## Inicio rápido
@@ -36,7 +36,7 @@ Credenciales del admin: las definidas en `.env` (`ADMIN_USERNAME` / `ADMIN_PASSW
 
 ## Red y puertos
 
-Solo la tienda y el panel de admin se publican en el host, y únicamente en `127.0.0.1`: no se puede llegar a ellos desde otra máquina de la red. La base de datos, Redis y los demás servicios no publican puertos y se comunican por la red interna de compose.
+Solo la tienda y el panel de admin se publican en el host, y únicamente en `127.0.0.1`: no se puede llegar a ellos desde otra máquina de la red. La base de datos, Redis y los demás servicios no publican puertos y se comunican por la red interna de compose. Con Docker Engine en Linux hace falta la versión 28 o posterior: en las anteriores, otras máquinas de la misma red podían llegar a los puertos publicados en `127.0.0.1` y, según la configuración del firewall, directamente a los contenedores, aunque no publiquen puertos.
 
 | Servicio                                | Desde el host    | Dentro de compose  |
 |-----------------------------------------|------------------|--------------------|
@@ -46,7 +46,7 @@ Solo la tienda y el panel de admin se publican en el host, y únicamente en `127
 | `redis`                                 | no publicado     | `redis:6379`       |
 | `catalog`, `carts`, `orders`, `checkout`| no publicados    | `<servicio>:8080`  |
 
-Usar `127.0.0.1` y no `localhost`: en Windows, algunos clientes prueban primero IPv6 y tardan unos 2 segundos en pasar a IPv4.
+`localhost` también funciona, pero en Windows algunos clientes prueban primero IPv6 (`::1`), donde no hay nada publicado, y tardan unos 2 segundos en pasar a IPv4. Por eso los ejemplos usan `127.0.0.1`.
 
 Para consultar la base o Redis no hace falta publicarlos:
 
@@ -55,7 +55,7 @@ docker compose exec db psql -U retail_user -d orders
 docker compose exec redis redis-cli
 ```
 
-Si se necesita un cliente gráfico, crear un `docker-compose.override.yml` (no se versiona) que publique la base solo en `127.0.0.1`. Con ese archivo presente, la prueba de humo marca como falla la prueba de red de `db`.
+Si se necesita un cliente gráfico, crear en la raíz del repo un `docker-compose.override.yml` (no se versiona) que publique la base solo en `127.0.0.1` y aplicarlo con `docker compose up -d`. Al terminar, borrarlo y volver a correr `docker compose up -d` para que la base deje de publicarse. Mientras `db` esté publicada, la prueba de humo marca como falla la prueba de red de `db`.
 
 ```yaml
 services:
@@ -64,7 +64,7 @@ services:
       - "127.0.0.1:5433:5432"
 ```
 
-> Si compose recrea `db`, carts no se reconecta y responde 500 hasta reiniciarlo: `docker compose restart carts`.
+> Cada `docker compose up -d` después de agregar o sacar el override (o de cualquier cambio en la configuración de `db`) recrea `db`. carts no se reconecta y responde 500 hasta reiniciarlo: `docker compose restart carts`.
 
 ## Comandos útiles
 
@@ -147,12 +147,12 @@ bash scripts/smoke-test.sh
 
 | Servicio     | Lenguaje    | Framework     | Imagen final                     | Persistencia | Puerto externo |
 |--------------|-------------|---------------|----------------------------------|--------------|----------------|
-| **ui**       | TypeScript  | Express       | `distroless/nodejs22-debian13`   | —            | 8080           |
+| **ui**       | TypeScript  | Express       | `distroless/nodejs22-debian13`   | —            | 127.0.0.1:8080 |
 | **catalog**  | Go 1.24     | Gin + GORM    | `distroless/base-nossl-debian13` | PostgreSQL   | —              |
 | **carts**    | Python 3.12 | FastAPI       | `python:3.12-slim-trixie`        | PostgreSQL   | —              |
 | **checkout** | TypeScript  | NestJS        | `distroless/nodejs22-debian13`   | Redis        | —              |
 | **orders**   | Go 1.24     | Gin + GORM    | `distroless/static-debian13`     | PostgreSQL   | —              |
-| **admin**    | TypeScript  | Express       | `distroless/nodejs22-debian13`   | PostgreSQL   | 8081           |
+| **admin**    | TypeScript  | Express       | `distroless/nodejs22-debian13`   | PostgreSQL   | 127.0.0.1:8081 |
 | **db**       | —           | PostgreSQL 16 | `postgres:16`                    | —            | —              |
 | **redis**    | —           | Redis 7       | `redis:7-alpine`                 | —            | —              |
 
