@@ -161,7 +161,7 @@ Todo lo que el pipeline ejecuta tiene versión fija:
 - **Actualizar versiones es manual.** Dependabot puede actualizar los SHA de las acciones, pero no los digests de las herramientas, que están en el `env` del workflow.
 - **Visibilidad del paquete en GHCR.** La primera publicación crea cada paquete como privado. Si se quieren públicos, hay que cambiarlo una vez en la configuración del paquete.
 - **Los logs de diagnóstico** (`docker compose logs`) pueden incluir valores del `.env`; están ocultos por `::add-mask::`.
-- **Tiempo.** El job de imágenes construye seis imágenes sin caché; se estima en unos 10 a 15 minutos. El tiempo real de cada corrida se ve en la pestaña Actions.
+- **Tiempo.** La primera corrida en GitHub (PR #41, 2026-11-22) tardó unos 4 minutos y medio en total: secretos, SAST y dependencias en paralelo, menos de un minuto; el job de imágenes, que construye las seis sin caché, las escanea y corre la prueba de humo, 2 min 44 s. El tiempo de cada corrida se ve en la pestaña Actions.
 
 ## Cómo se maneja una excepción
 
