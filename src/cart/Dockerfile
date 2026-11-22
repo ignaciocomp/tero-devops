@@ -26,7 +26,12 @@ ENV PATH="/opt/venv/bin:$PATH" \
 # Usuario sin privilegios con un UID fijo y alto (10001, para no chocar con usuarios del
 # sistema), sin home ni shell de login. Además, a los binarios de la base que tienen el
 # bit setuid/setgid (su, mount, passwd...) se les quita: el proceso no los necesita.
-RUN groupadd --gid 10001 app \
+# Antes, se aplican los parches de seguridad de Debian que la imagen base todavía no trae
+# (por ejemplo zlib1g, CVE-2026-85091): el escaneo de la imagen bloquea las CRITICAL/HIGH con fix.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --gid 10001 app \
  && useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app \
  && find / -xdev -perm /6000 -type f -exec chmod a-s {} +
 WORKDIR /app
