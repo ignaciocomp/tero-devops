@@ -1,0 +1,56 @@
+# Configuración de Gitleaks para Tero.
+# Se usan las reglas por defecto de Gitleaks y se agregan reglas propias para
+# contraseñas de baja entropía (por ejemplo "admin" o "retailpassword"), que las
+# reglas por defecto no detectan porque no tienen formato de token ni entropía alta.
+# Las credenciales viejas del commit inicial ya se rotaron: sus hallazgos están
+# listados en .gitleaksignore como excepción documentada.
+
+title = "Tero - reglas de secretos"
+
+[extend]
+useDefault = true
+
+# (a) Clave con password/secret y valor literal en docker-compose*.yml o .env.example.
+# Se acepta solo interpolación (${VAR...}), valor vacío o comentario.
+[[rules]]
+id = "tero-compose-env-literal-password"
+description = "Contraseña o secreto con valor literal en docker-compose*.yml o .env.example"
+path = '''(^|/)(docker-compose[^/]*\.ya?ml|compose[^/]*\.ya?ml|\.env\.example)$'''
+# La clave tiene que estar al principio de la línea (con sangría, "- " o "export "), para no
+# confundirla con el nombre de la variable dentro de una interpolación ${VAR:?mensaje}.
+regex = '''(?im)^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?["']?[\w.-]*(?:password|secret)[\w.-]*["']?[ \t]*[:=][ \t]*["']?([^\s"'$#][^\s"'#]*)'''
+secretGroup = 1
+keywords = ["password", "secret"]
+tags = ["password", "low-entropy", "tero"]
+
+# (b) Valor por defecto literal para una contraseña o secreto en TypeScript/JavaScript:
+#     process.env.ADMIN_PASSWORD || 'admin'   /   process.env.X_SECRET ?? "valor"
+[[rules]]
+id = "tero-js-default-password"
+description = "Contraseña o secreto con valor por defecto literal en TS/JS"
+path = '''\.(ts|tsx|js|jsx|mjs|cjs)$'''
+regex = '''(?i)(?:password|secret)\w*\s*(?:\|\||\?\?)\s*["']([^"']+)["']'''
+secretGroup = 1
+keywords = ["password", "secret"]
+tags = ["password", "low-entropy", "tero"]
+
+# (c1) Valor por defecto literal no vacío en Go con un helper getenv("X_PASSWORD", "valor").
+[[rules]]
+id = "tero-go-getenv-default-password"
+description = "Contraseña o secreto con valor por defecto literal en Go (getenv con default)"
+path = '''\.go$'''
+regex = '''(?i)getenv\w*\(\s*"[\w]*(?:password|secret)[\w]*"\s*,\s*"([^"]+)"'''
+secretGroup = 1
+keywords = ["password", "secret"]
+tags = ["password", "low-entropy", "tero"]
+
+# (c2) Valor por defecto literal no vacío en un tag de struct de Go:
+#      `env:"X_PASSWORD,default=valor"`
+[[rules]]
+id = "tero-go-envtag-default-password"
+description = "Contraseña o secreto con default literal en un tag env de Go"
+path = '''\.go$'''
+regex = '''(?i)env:"[\w]*(?:password|secret)[\w]*,[^"]*default=([^,"]+)'''
+secretGroup = 1
+keywords = ["password", "secret"]
+tags = ["password", "low-entropy", "tero"]
