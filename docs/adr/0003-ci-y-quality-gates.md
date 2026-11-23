@@ -38,7 +38,7 @@ resumen: corre siempre al final, con el resultado de los cinco
 | Secretos | Gitleaks 8.30.1 | Todo el historial de git (`fetch-depth: 0`), con las reglas por defecto más las de `.gitleaks.toml` | Hay al menos un hallazgo | `.gitleaksignore`, por fingerprint |
 | SAST (seguridad) | Semgrep 1.186.0 | Código y Dockerfiles, packs `p/default`, `p/golang`, `p/python`, `p/javascript`, `p/typescript`, `p/nodejs` y `p/dockerfile` | Hay al menos un hallazgo ERROR, CRITICAL o HIGH | `nosemgrep: <regla>` en la línea, con justificación |
 | Análisis estático (calidad) | Semgrep 1.186.0 | Lo mismo | Los hallazgos WARNING o MEDIUM superan `SEMGREP_MAX_WARNINGS` (hoy 1, la línea base medida) | Se baja el umbral con un PR |
-| Dependencias (SCA) | Trivy 0.76.2 `fs` | `package-lock.json`, `yarn.lock`, `go.mod` y `requirements.txt` | Hay una vulnerabilidad CRITICAL o HIGH **con parche disponible** | `.trivyignore`, con justificación y vencimiento |
+| Dependencias (SCA) | Trivy 0.76.2 `fs` | `package-lock.json`, `yarn.lock`, `go.mod` y `requirements.txt` | Hay una vulnerabilidad CRITICAL o HIGH **con parche disponible** | `.trivyignore`, solo si tiene parche y no se puede aplicar todavía; con justificación y vencimiento |
 | Imágenes | Trivy 0.76.2 `image` | El tar de cada una de las seis imágenes: paquetes de Debian y dependencias de cada lenguaje | Igual que dependencias | `.trivyignore` |
 | Prueba de humo | `scripts/smoke-test.sh` | El stack levantado con las imágenes escaneadas | Falla alguna de las 27 pruebas | No hay |
 
@@ -52,7 +52,7 @@ La letra pide bloquear las vulnerabilidades CRITICAL y HIGH. Bloquear también l
 
 - **Con parche disponible:** bloquean (`--ignore-unfixed --exit-code 1`). Se resuelven subiendo la dependencia o la imagen base.
 - **Sin parche:** no bloquean, pero se reportan en cada corrida. Un segundo paso de Trivy, sin `--ignore-unfixed` y con `--exit-code 0`, deja la tabla completa en el resumen, para el código y para cada imagen. Se revisan con fecha (ver "Cómo se maneja una excepción").
-- **Cuando sale el parche**, la vulnerabilidad pasa sola a bloquear en la corrida siguiente: no depende de que alguien se acuerde.
+- **Cuando sale el parche**, la vulnerabilidad pasa sola a hacer fallar el gate en la corrida siguiente: no depende de que alguien se acuerde. Para eso, las que no tienen parche **no** van en `.trivyignore`: una entrada ahí la seguiría ignorando después del parche, hasta su vencimiento.
 
 Una vulnerabilidad con parche que no se puede aplicar todavía (por ejemplo, porque requiere un cambio de versión mayor que es un bloque de trabajo propio) solo se deja pasar con una entrada en `.trivyignore` que tiene justificación y fecha de vencimiento.
 
@@ -167,7 +167,7 @@ Todo lo que el pipeline ejecuta tiene versión fija:
 
 Ninguna excepción se agrega en el mismo PR que la necesita sin explicarla en la descripción del PR.
 
-**Vulnerabilidad con parche que no se puede aplicar todavía:** una entrada en `.trivyignore` con un comentario arriba que diga qué paquete y qué imagen afecta, por qué no se actualiza ahora, por qué el riesgo es aceptable mientras tanto y quién la revisa. Siempre con vencimiento: al pasar la fecha, Trivy deja de ignorarla y el build vuelve a fallar.
+**Vulnerabilidad con parche que no se puede aplicar todavía:** una entrada en `.trivyignore` con un comentario arriba que diga qué paquete y qué imagen afecta, por qué no se actualiza ahora, por qué el riesgo es aceptable mientras tanto y quién la revisa. Siempre con vencimiento: al pasar la fecha, Trivy deja de ignorarla y el build vuelve a fallar. El caso más probable es que Debian ya haya publicado el parche y la imagen distroless todavía no lo traiga: ahí el vencimiento es corto (una o dos semanas) y la entrada se borra en cuanto la imagen base se actualiza.
 
 ```text
 # CVE-AAAA-NNNNN: <paquete> <versión> en tero-<servicio>. El parche requiere <cambio>,
@@ -175,7 +175,7 @@ Ninguna excepción se agrega en el mismo PR que la necesita sin explicarla en la
 CVE-AAAA-NNNNN exp:2027-01-31
 ```
 
-**Vulnerabilidad sin parche:** no bloquea, pero se registra igual: una entrada en `.trivyignore` con la misma justificación y vencimiento, y una fila en la tabla de excepciones de `docs/informes/seguridad.md`. Así el escaneo completo (sin `--ignore-unfixed`) también da limpio y cada excepción tiene fecha de revisión. Si una se vuelve explotable en nuestro uso, se mitiga aunque no haya parche (cambiar de imagen base o de dependencia).
+**Vulnerabilidad sin parche:** no hace fallar el gate y **no** va en `.trivyignore`. Se registra en la tabla de `docs/informes/seguridad.md`, con su justificación y una fecha de revisión, y el paso de informe la lista en cada corrida. En `.trivyignore` seguiría ignorada después de que salga el parche, hasta su vencimiento: justo cuando más importa que el gate avise (lo marcó la revisión del PR #41). Si una se vuelve explotable en nuestro uso, se mitiga aunque no haya parche (cambiar de imagen base o de dependencia).
 
 **Secreto detectado por Gitleaks:**
 1. Si es real, se rota primero. Que el commit se revierta no alcanza: ya quedó en el historial.
@@ -197,7 +197,7 @@ Medido el 2026-11-22 con las mismas imágenes y opciones del workflow:
 | Calidad (WARNING/MEDIUM) | 3 | 1 (2 falsos positivos silenciados con `nosemgrep`) |
 | Dependencias con parche | 75 | 0 |
 | Imágenes con parche | catalog 52, orders 45, checkout 24, carts 4, ui 0, admin 0 | 0 en las seis |
-| Sin parche (informativo) | — | 12 CVE de paquetes de Debian, en `.trivyignore` con vencimiento |
+| Sin parche (informativo) | — | 12 CVE de paquetes de Debian, documentadas en `docs/informes/seguridad.md` |
 | Prueba de humo | 27 de 27 | 27 de 27 |
 
 Verificado al escribir este ADR, con el código de `5f19eae`:

@@ -246,7 +246,7 @@ tero-devops/
 │       └── ci.yml      # CI: gates de seguridad y calidad, imágenes y publicación
 ├── .env.example        # Plantilla de variables (el .env real no se versiona)
 ├── .gitleaks.toml      # Reglas de secretos (y .gitleaksignore con las excepciones)
-├── .trivyignore        # Vulnerabilidades sin parche aceptadas, con vencimiento
+├── .trivyignore        # Excepciones de Trivy: CVE con parche que todavía no se puede aplicar
 ├── docker-compose.yml
 ├── init-db.sql
 ├── docs/

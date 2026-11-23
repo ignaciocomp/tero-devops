@@ -12,7 +12,7 @@
 | Secretos con las reglas propias | 10, todos en `56fd8cb` | 0 | Ya estaban rotadas (PR #1). Quedan como excepción por fingerprint |
 | Dependencias CRITICAL/HIGH con parche (Trivy sobre el repo) | 75 | 0 | Actualización de los módulos de Go y del `yarn.lock` de checkout |
 | Imágenes CRITICAL/HIGH con parche (Trivy sobre cada imagen) | 125 | 0 | Go 1.27, dependencias, FastAPI en carts y parches de Debian |
-| CRITICAL/HIGH sin parche publicado (informativo) | — | 12 CVE | Excepciones justificadas, con vencimiento |
+| CRITICAL/HIGH sin parche publicado (informativo) | — | 12 CVE | Justificadas en este informe. El gate falla apenas tengan parche |
 | Semgrep ERROR (gate de seguridad) | 0 | 0 | — |
 | Semgrep WARNING/MEDIUM (quality gate) | 3 | 1 | 2 falsos positivos silenciados; 1 recomendación pendiente |
 
@@ -64,9 +64,11 @@ Todas tenían versión corregida, así que ninguna se aceptó como excepción.
 
 Después de los cambios, la prueba de humo pasa las 27 pruebas con las imágenes nuevas.
 
-## Excepciones: vulnerabilidades sin parche
+## Vulnerabilidades sin parche
 
-El gate bloquea las CRITICAL y HIGH que **tienen** parche (`--ignore-unfixed`). Las que no tienen parche se informan en cada corrida y quedan registradas acá y en `.trivyignore`, con fecha de revisión. Todas son paquetes del sistema operativo de las imágenes base (Debian 13).
+El gate falla con las CRITICAL y HIGH que **tienen** parche (`--ignore-unfixed`). Las que no tienen parche no lo hacen fallar: el paso de informe del pipeline las lista en cada corrida, y acá quedan registradas con su justificación y una fecha de revisión. Todas son paquetes del sistema operativo de las imágenes base (Debian 13).
+
+No van en `.trivyignore`. Al principio estaban también ahí, y en la revisión del PR #41 apareció el problema: una entrada en `.trivyignore` ignora la CVE aunque salga el parche, así que hasta el vencimiento el gate habría pasado con una vulnerabilidad que ya tenía arreglo. `.trivyignore` queda solo para las que tienen parche y todavía no se pueden aplicar (hoy, ninguna).
 
 | CVE | Paquete | Imágenes | Por qué se acepta | Revisión |
 |---|---|---|---|---|
@@ -78,7 +80,7 @@ El gate bloquea las CRITICAL y HIGH que **tienen** parche (`--ignore-unfixed`). 
 | CVE-2026-16742 | libsystemd0 / libudev1 257 | carts | La falla es de `systemd-homed`, que no corre en el contenedor | 2026-12-31 |
 | CVE-2026-9538 | perl-base 5.40.1 | carts | Debian no lo va a parchear por ahora; la aplicación no ejecuta Perl ni abre archivos tar | 2026-12-31 |
 
-Cuando Debian publique un parche, la vulnerabilidad pasa sola a bloquear en la corrida siguiente, porque deja de estar "sin parche". La imagen de carts concentra casi todas porque es la única que no es distroless (no hay distroless con Python 3.12; ver ADR 0001).
+Cuando Debian publique un parche, el gate falla en la corrida siguiente, porque la vulnerabilidad deja de estar "sin parche". En carts el parche entra en el próximo build, por el `apt-get upgrade`. En ui, admin y checkout hay que esperar a que se reconstruya la imagen distroless, que el build trae con `--pull`. Si mientras tanto hace falta que el pipeline pase, la CVE va a `.trivyignore` con un vencimiento corto y se saca cuando la imagen base trae el parche. La imagen de carts concentra casi todas porque es la única que no es distroless (no hay distroless con Python 3.12; ver ADR 0001).
 
 ## Análisis estático (Semgrep)
 
@@ -103,7 +105,7 @@ Estos problemas no los detecta ninguna de las herramientas, pero aparecieron al 
 2. Corregir los hallazgos de la revisión manual antes de desplegar en la nube: usuarios por servicio, TLS hacia la base, Redis con autenticación y los endpoints de diagnóstico fuera del alcance público.
 3. Agregar un lockfile para carts (por ejemplo `pip-compile --generate-hashes`), así el escaneo del repo también ve las dependencias transitivas. Hoy solo se ven en la imagen.
 4. Sumar Dependabot (acciones, módulos de Go, npm y pip) para recibir PRs de actualización antes de que el gate frene el pipeline.
-5. Revisar las excepciones de `.trivyignore` antes del 2026-12-31, o antes si Debian publica parches.
+5. Revisar la tabla de vulnerabilidades sin parche antes del 2026-12-31. Si antes sale un parche, el gate lo avisa solo.
 
 ## Cómo repetirlo
 
