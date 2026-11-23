@@ -23,8 +23,15 @@ Usamos **GitHub Flow**: una sola rama de larga vida, `main`, que siempre se pued
 | Revisión real | Comentarios en líneas concretas. El autor responde y corrige con commits nuevos; después de pedir revisión no se reescribe la historia de la rama. |
 | Merge commit | Se fusiona con "Create a merge commit": en `main` queda un commit "Merge pull request #N" por PR, con la historia de la rama. Así se ve qué entró en cada PR y se puede revertir un PR entero. |
 | Versiones por SHA | Cada commit de `main` genera imágenes con su SHA como tag, y esa misma imagen se promueve entre ambientes. No hay ramas de release. |
-| Arreglos urgentes | Igual que cualquier cambio: rama `fix/...` desde `main`, PR revisado y merge. Para volver atrás rápido se vuelve a desplegar el SHA anterior, y el arreglo entra después por PR (o con `git revert` del merge commit, también por PR). |
+| Arreglos urgentes | Igual que cualquier cambio: rama `fix/...` desde `main`, PR revisado y merge. Si se rompe producción, primero se vuelve atrás sin merge (ver la sección siguiente). |
 | Controles automáticos | Cuando el CI esté estable, sus jobs pasan a ser obligatorios en la protección de `main`. |
+
+### Si se rompe producción y la otra persona no está
+
+La protección de `main` no tiene excepciones, ni para administradores: nadie puede mergear solo. Para salir del paso no hace falta un merge:
+
+1. Se vuelve a desplegar la imagen del último SHA que funcionaba. Cada commit de `main` deja sus imágenes en el registry con el SHA como tag, así que volver atrás no toca el código ni la rama.
+2. El arreglo entra después por PR, con una rama `fix/...` o con `git revert` del merge commit, cuando la otra persona pueda revisarlo.
 
 ## Alternativas consideradas
 
