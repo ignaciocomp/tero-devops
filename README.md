@@ -97,6 +97,8 @@ Cada PR y cada push a `main` corren el workflow [`.github/workflows/ci.yml`](.gi
 | Imágenes | Trivy sobre cada una de las seis imágenes, antes de publicarlas | lo mismo, para paquetes del sistema y de cada lenguaje |
 | Prueba de humo | `scripts/smoke-test.sh` con el stack levantado con esas mismas imágenes | falla alguna prueba |
 
+Por ahora el pipeline avisa pero no impide el merge: eso empieza cuando sus checks sean obligatorios en la protección de `main` (issue #16).
+
 Solo en un push a `main`, y si pasó todo lo anterior, las seis imágenes se publican en GHCR como `ghcr.io/ignaciocomp/tero-<servicio>:<SHA del commit>`. Así se sabe exactamente qué código corre cada imagen. El resultado de cada gate aparece en el resumen de la corrida, en la pestaña Actions. Los hallazgos, lo que se corrigió y las excepciones están en el [informe de seguridad](docs/informes/seguridad.md) y en el [informe de análisis estático](docs/informes/analisis-estatico.md).
 
 ---

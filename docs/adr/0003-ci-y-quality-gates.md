@@ -146,14 +146,15 @@ Todo lo que el pipeline ejecuta tiene versión fija:
 
 ### A favor
 
-- Nada llega a `main` ni al registry sin pasar los cinco gates, y todo está definido en el repositorio.
+- Nada llega al registry sin pasar los cinco gates, y todo está definido en el repositorio.
 - Lo que se publica es exactamente lo que se escaneó y se probó, con verificación de hash y de ID de imagen.
 - Cada imagen publicada dice de qué commit sale (tag y etiqueta OCI).
 - Un solo job puede escribir en el registry, y no ejecuta código del repositorio.
 
 ### En contra, o a tener en cuenta
 
-- **El pipeline puede ponerse rojo sin cambios en el código.** La base de Trivy se actualiza todos los días, y los packs de Semgrep se bajan del registry en cada corrida (no tienen versión fija). Para Trivy es lo buscado: una vulnerabilidad nueva con parche tiene que bloquear. Para Semgrep, si una regla nueva rompe el gate, se ajusta con un PR.
+- **El CI todavía no impide el merge.** Hasta que sus checks sean obligatorios en la protección de `main` (issue #16), un PR con el CI en rojo se puede mergear igual: el CI avisa, y lo único que frena el merge es la revisión. El registry sí queda protegido, porque `publicar` corre solo si pasaron todos los gates.
+- **El pipeline puede ponerse rojo sin cambios en el código.** La base de Trivy se actualiza todos los días, y los packs de Semgrep se bajan del registry en cada corrida (no tienen versión fija). Para Trivy es lo buscado: una vulnerabilidad nueva con parche tiene que hacer fallar el gate. Para Semgrep, si una regla nueva rompe el gate, se ajusta con un PR.
 - **Para que los gates pasen hubo que actualizar dependencias.** Con el código de `5f19eae`, Trivy marcaba 75 vulnerabilidades CRITICAL y HIGH con parche en los `go.mod` de catalog y orders y en el `yarn.lock` de checkout, más las de la biblioteca estándar de Go 1.24 (que ya no recibe parches) y las de starlette y zlib en la imagen de carts. Se subió el builder a Go 1.27, se actualizaron los módulos de Go, el `yarn.lock` de checkout y FastAPI en carts, y carts aplica los parches de Debian en el build. El detalle, con antes y después, está en `docs/informes/seguridad.md`.
 - **carts ejecuta `apt-get upgrade` en el build.** Trae parches de Debian que la imagen base todavía no incluye. Hace que dos builds del mismo commit en días distintos puedan diferir, pero la imagen se construye una sola vez por commit y lo que se despliega es esa imagen, por SHA.
 - **Dependencias transitivas de Python.** Sin lockfile, Trivy `fs` solo ve las dependencias directas de `requirements.txt`. Las transitivas sí se escanean en la imagen de carts, donde quedan instaladas.

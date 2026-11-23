@@ -13,7 +13,7 @@
 | WARNING o MEDIUM | 1, la línea base medida | El pipeline falla (quality gate). El umbral solo baja |
 | INFO o LOW | sin límite | Solo se informa |
 
-El umbral funciona como un trinquete: cualquier hallazgo nuevo de nivel WARNING o MEDIUM frena el merge, y cuando se corrige el que queda, el límite baja a 0. Cambiarlo requiere un PR.
+El umbral funciona como un trinquete: cualquier hallazgo nuevo de nivel WARNING o MEDIUM hace fallar el pipeline, y cuando se corrige el que queda, el límite baja a 0. Cambiarlo requiere un PR. Que el pipeline falle todavía no impide mergear: eso empieza cuando los checks sean obligatorios en la protección de `main` (issue #16).
 
 ## Resultados
 
