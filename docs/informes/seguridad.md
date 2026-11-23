@@ -22,13 +22,14 @@ Las 125 de imágenes se reparten así: catalog 52, orders 45, checkout 24 y cart
 
 Con las reglas por defecto, Gitleaks no encuentra nada en el historial. Eso es engañoso: el commit inicial `56fd8cb` tenía contraseñas escritas en `docker-compose.yml` y en `src/admin/src/app.ts` (`retailpassword`, `admin`, `change-me-in-production`). Son de baja entropía, así que no se parecen a un token y las reglas por defecto las pasan por alto.
 
-Por eso `.gitleaks.toml` suma cuatro reglas propias:
+Por eso `.gitleaks.toml` suma cinco reglas propias:
 - una clave con `password` o `secret` y un valor literal en `docker-compose*.yml` o `.env.example`;
 - un valor por defecto literal en TypeScript o JavaScript (`process.env.X_PASSWORD || 'admin'`);
 - en Go, un default literal en `getenv("X_PASSWORD", "valor")`;
-- en Go, un default literal en un tag `env:"X_PASSWORD,default=valor"`.
+- en Go, un default literal en un tag `env:"X_PASSWORD,default=valor"`;
+- en Python, un default literal en `os.getenv("X_PASSWORD", "valor")` o en `os.environ.get(...)`, con comillas simples o dobles.
 
-Con esas reglas aparecen los 10 hallazgos de `56fd8cb`, y ninguno en el código actual. Una contraseña nueva escrita en el compose también se detecta: se probó con `POSTGRES_PASSWORD: algoreal123` en una copia del archivo.
+Con esas reglas aparecen los 10 hallazgos de `56fd8cb`, y ninguno en el código actual. Una contraseña nueva también se detecta: se probó en una copia del repo con `POSTGRES_PASSWORD: algoreal123` en el compose y con `os.getenv("CART_POSTGRES_PASSWORD", "admin")` en carts. La regla de Python se agregó en la revisión del PR #41: hasta ahí, una contraseña por defecto en el código de carts no la detectaba ninguna regla.
 
 Esas contraseñas se rotaron y salieron del código en el PR #1, y hoy los valores salen del `.env`, que no se versiona. Siguen en el historial público, y reescribirlo no las vuelve secretas. Por eso cada hallazgo está en `.gitleaksignore` **por fingerprint** (commit, archivo, regla y línea): la excepción vale solo para ese commit. La misma contraseña en cualquier otro commit vuelve a frenar el pipeline.
 

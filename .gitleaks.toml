@@ -54,3 +54,16 @@ regex = '''(?i)env:"[\w]*(?:password|secret)[\w]*,[^"]*default=([^,"]+)'''
 secretGroup = 1
 keywords = ["password", "secret"]
 tags = ["password", "low-entropy", "tero"]
+
+# (d) Valor por defecto literal no vacío en Python (carts):
+#     os.getenv("X_PASSWORD", "valor")   /   os.environ.get('X_SECRET', default='valor')
+# Es una regla aparte, y no la (c1) con el path ampliado, porque en Python cambian las
+# comillas (simples o dobles), la función (os.environ.get) y el default puede ir con nombre.
+[[rules]]
+id = "tero-py-getenv-default-password"
+description = "Contraseña o secreto con valor por defecto literal en Python (os.getenv / os.environ.get)"
+path = '''\.py$'''
+regex = '''(?i)(?:getenv|environ\.get)\(\s*["'][\w]*(?:password|secret)[\w]*["']\s*,\s*(?:default\s*=\s*)?["']([^"']+)["']'''
+secretGroup = 1
+keywords = ["password", "secret"]
+tags = ["password", "low-entropy", "tero"]
