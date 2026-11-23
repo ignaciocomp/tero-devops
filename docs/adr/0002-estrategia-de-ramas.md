@@ -24,7 +24,7 @@ Usamos **GitHub Flow**: una sola rama de larga vida, `main`, que siempre se pued
 | Merge commit | Se fusiona con "Create a merge commit": en `main` queda un commit "Merge pull request #N" por PR, con la historia de la rama. Así se ve qué entró en cada PR y se puede revertir un PR entero. |
 | Versiones por SHA | Cada commit de `main` genera imágenes con su SHA como tag, y esa misma imagen se promueve entre ambientes. No hay ramas de release. |
 | Arreglos urgentes | Igual que cualquier cambio: rama `fix/...` desde `main`, PR revisado y merge. Si se rompe producción, primero se vuelve atrás sin merge (ver la sección siguiente). |
-| Controles automáticos | Cuando el CI esté estable, sus jobs pasan a ser obligatorios en la protección de `main`. |
+| Controles automáticos | Cuando el CI esté estable, sus jobs pasan a ser obligatorios en la protección de `main` (issue #16). Hasta entonces el CI avisa, pero no impide el merge. |
 
 ### Si se rompe producción y la otra persona no está
 
@@ -42,7 +42,7 @@ La protección de `main` no tiene excepciones, ni para administradores: nadie pu
 
 ## Consecuencias
 
-- `main` tiene que estar siempre desplegable: el CI corre en cada PR y frena el merge si falla.
+- `main` tiene que estar siempre desplegable. El CI corre en cada PR y, cuando sus checks sean obligatorios en la protección de `main` (issue #16), frena el merge si falla. Hasta entonces, lo que lo cuida es la revisión.
 - Cada cambio deja evidencia de revisión: el PR, los comentarios, las respuestas y la aprobación.
 - Las ramas tienen que ser cortas. Si una vive mucho, aparecen conflictos; se resuelven con `git merge origin/main` dentro de la rama, sin rebase ni force push.
 - Sin ramas de release, la versión que corre en cada ambiente se conoce por el SHA de la imagen desplegada.
