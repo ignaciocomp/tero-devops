@@ -1,6 +1,6 @@
 
 
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ICheckoutRepository } from './ICheckoutRepository';
 import { Redis } from 'ioredis';
 
@@ -10,6 +10,7 @@ export class RedisCheckoutRepository
 {
   private _client: Redis;
   private _readClient: Redis;
+  private readonly logger = new Logger(RedisCheckoutRepository.name);
 
   constructor(
     private url: string,
@@ -17,7 +18,13 @@ export class RedisCheckoutRepository
   ) {}
 
   private async buildClient(url: string) {
-    return new Redis(url);
+    const client = new Redis(url);
+    // Sin este listener, ioredis escribe los errores de conexión en texto por consola.
+    // Igual sigue reintentando la conexión.
+    client.on('error', (error) => {
+      this.logger.error('Redis connection error', errorText(error));
+    });
+    return client;
   }
 
   async client() {
@@ -47,7 +54,7 @@ export class RedisCheckoutRepository
         this._readClient = null;
       }
     } catch (error) {
-      console.error('Error closing Redis connections:', error);
+      this.logger.error('Error closing Redis connections', errorText(error));
       throw error;
     }
   }
@@ -76,8 +83,12 @@ export class RedisCheckoutRepository
       await client.ping();
       return true;
     } catch (error) {
-      console.error('Redis health check failed:', error);
+      this.logger.error('Redis health check failed', errorText(error));
       return false;
     }
   }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? (error.stack ?? error.message) : String(error);
 }

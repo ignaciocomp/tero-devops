@@ -1,9 +1,38 @@
-from fastapi import FastAPI
+import logging
+import time
+
+from fastapi import FastAPI, Request
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.config import settings
+from app.logging_config import configure_logging
 from app.router import router
 
+configure_logging()
+log = logging.getLogger("carts")
+
 app = FastAPI(title="Cart Service")
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Un log por request, con campos. Solo la ruta, sin la query string ni la IP, para no
+    dejar datos de los usuarios. El health check no se registra: en la nube lo consulta el
+    balanceador cada pocos segundos."""
+    start = time.perf_counter()
+    path = request.url.path
+    fields = {"method": request.method, "path": path}
+    try:
+        response = await call_next(request)
+    except Exception:
+        fields.update(status=500, duration_ms=round((time.perf_counter() - start) * 1000, 3))
+        log.exception("request", extra=fields)
+        raise
+    if path != "/health":
+        status = response.status_code
+        level = logging.ERROR if status >= 500 else logging.WARNING if status >= 400 else logging.INFO
+        fields.update(status=status, duration_ms=round((time.perf_counter() - start) * 1000, 3))
+        log.log(level, "request", extra=fields)
+    return response
 
 
 @app.on_event("startup")

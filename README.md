@@ -85,6 +85,33 @@ docker compose logs -f <servicio>
 bash scripts/smoke-test.sh
 ```
 
+## Logs
+
+Los seis servicios escriben sus logs en JSON por la salida estándar, una línea por evento y con los mismos campos, así en CloudWatch Logs Insights se puede filtrar por campo sin importar el lenguaje del servicio.
+
+| Campo | Contenido |
+|-------|-----------|
+| `time` | Fecha y hora en UTC, ISO 8601 |
+| `level` | `info`, `warn` o `error` (y `debug` en checkout) |
+| `service` | `ui`, `catalog`, `carts`, `orders`, `checkout` o `admin` |
+| `msg` | El mensaje. Los requests usan `request` |
+| `method`, `path`, `status`, `duration_ms` | Solo en los requests |
+| `error` | Solo si hubo un error: el detalle o el stack |
+
+```json
+{"time":"2026-11-24T00:52:10.123Z","level":"info","service":"orders","msg":"request","method":"GET","path":"/orders","status":200,"duration_ms":3.41}
+```
+
+- Los requests con estado 4xx salen como `warn` y los 5xx como `error`.
+- No se registran la query string, la IP, el user agent ni los cuerpos de los requests, y el SQL de gorm se registra con `?` en lugar de los valores: los logs no guardan datos de los usuarios. Tampoco aparece ningún secreto del `.env`, y la prueba de humo lo comprueba.
+- El health check no se registra, porque en la nube lo consulta el balanceador cada pocos segundos.
+
+Para ver solo los errores de todos los servicios:
+
+```bash
+docker compose logs --no-log-prefix | grep '"level":"error"'
+```
+
 ## Integración continua
 
 Cada PR y cada push a `main` corren el workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Las decisiones y los umbrales están en el [ADR 0003](docs/adr/0003-ci-y-quality-gates.md).
