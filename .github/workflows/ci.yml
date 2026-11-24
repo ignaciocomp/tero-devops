@@ -1,0 +1,481 @@
+# CI de Tero: gates de seguridad y calidad, build y escaneo de las seis imágenes, prueba de
+# humo con docker compose y publicación en GHCR. Decisiones y umbrales: docs/adr/0003-ci-y-quality-gates.md
+#
+# Orden: secretos, sast y dependencias corren en paralelo. Si pasan los tres, imagenes construye,
+# escanea y prueba las imágenes. Solo en push a main, publicar sube a GHCR exactamente los tar
+# que imagenes escaneó y probó. resumen junta el resultado de cada gate.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# En un PR, un push nuevo cancela la corrida anterior. En main no se cancela: una corrida cortada
+# a mitad de la publicación dejaría el tag :main apuntando a imágenes de commits distintos.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Mínimo privilegio: solo lectura del código. publicar pide packages: write para él solo.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # Con "shell: bash" explícito, GitHub agrega -e y -o pipefail
+    shell: bash
+
+env:
+  # Herramientas como contenedores, con versión y digest fijos (índice multiplataforma).
+  # Para actualizar: docker buildx imagetools inspect <imagen>:<versión>
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+  SEMGREP_IMAGE: semgrep/semgrep:1.186.0@sha256:6e1b04340e60e910fbb4ddbf3c857ab0918f064417ad5ac530014ccb3cf8c8f1
+  TRIVY_IMAGE: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+  # Quality gate de análisis estático: máximo de hallazgos WARNING/MEDIUM de Semgrep.
+  # Se cambia con un PR (queda en el historial), no con una variable del repositorio.
+  # Es la línea base del 2026-11-22: 1 hallazgo (yarn-missing-minimal-age-gate en
+  # src/checkout/.yarnrc.yml, ver docs/informes/analisis-estatico.md). Solo se baja.
+  SEMGREP_MAX_WARNINGS: "1"
+  # Servicios con imagen propia. carts se construye desde src/cart (el resto, desde src/<servicio>)
+  SERVICIOS: ui catalog carts checkout orders admin
+
+jobs:
+  secretos:
+    name: Secretos (Gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # todo el historial, no solo el último commit
+          persist-credentials: false
+
+      - name: Gitleaks sobre todo el historial
+        run: |
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          # Corre con el usuario del runner, dueño del checkout: así git no rechaza el
+          # repositorio por "dubious ownership" y el reporte no queda como root.
+          # --ignore-gitleaks-allow: las excepciones van solo en .gitleaksignore, revisables en un lugar.
+          set +e
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$GITHUB_WORKSPACE:/repo:ro" -v "$RUNNER_TEMP/gitleaks:/out" -w /repo \
+            "$GITLEAKS_IMAGE" git \
+            --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore \
+            --ignore-gitleaks-allow --redact --no-banner --verbose --platform github \
+            --report-format json --report-path /out/gitleaks.json --exit-code 1 .
+          estado=$?
+          set -e
+          hallazgos="$(jq length "$RUNNER_TEMP/gitleaks/gitleaks.json" 2>/dev/null || echo "sin reporte")"
+          {
+            echo "## Secretos (Gitleaks)"
+            echo "Hallazgos en todo el historial: **$hallazgos** (los valores se ocultan con --redact)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$estado"
+
+  sast:
+    name: SAST y calidad (Semgrep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Semgrep
+        run: |
+          mkdir -p "$RUNNER_TEMP/semgrep"
+          # Sin --error: el escaneo termina en 0 con hallazgos, y los gates se evalúan en el paso
+          # siguiente sobre el JSON. Un error de Semgrep (reglas que no bajan, etc.) sí corta acá.
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/semgrep:/out" -w /src \
+            "$SEMGREP_IMAGE" semgrep scan --metrics=off \
+            --config p/default --config p/golang --config p/python \
+            --config p/javascript --config p/typescript --config p/nodejs --config p/dockerfile \
+            --json --output /out/semgrep.json
+
+      - name: Subir el reporte de Semgrep
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: semgrep
+          path: ${{ runner.temp }}/semgrep/semgrep.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Gate de seguridad y quality gate
+        run: |
+          reporte="$RUNNER_TEMP/semgrep/semgrep.json"
+          if ! [[ "$SEMGREP_MAX_WARNINGS" =~ ^[0-9]+$ ]]; then
+            echo "::error::SEMGREP_MAX_WARNINGS tiene que ser un entero, es '$SEMGREP_MAX_WARNINGS'"
+            exit 1
+          fi
+          # Semgrep usa dos escalas: la clásica (ERROR, WARNING, INFO) y la nueva (CRITICAL, HIGH,
+          # MEDIUM, LOW); los packs del registry mezclan las dos. Se agrupan así:
+          contar() { jq --arg s "$1" '[.results[] | select(.extra.severity as $v | $s | split(",") | index($v))] | length' "$reporte"; }
+          bloqueantes="$(contar ERROR,CRITICAL,HIGH)"
+          advertencias="$(contar WARNING,MEDIUM)"
+          informativos="$(contar INFO,LOW)"
+          errores_de_analisis="$(jq '.errors | length' "$reporte")"
+          {
+            echo "## SAST y calidad (Semgrep)"
+            echo "| Severidad | Hallazgos | Límite |"
+            echo "|---|---|---|"
+            echo "| ERROR / CRITICAL / HIGH | $bloqueantes | 0 (gate de seguridad) |"
+            echo "| WARNING / MEDIUM | $advertencias | $SEMGREP_MAX_WARNINGS (quality gate) |"
+            echo "| INFO / LOW | $informativos | sin límite |"
+            echo
+            echo "Archivos que Semgrep no pudo analizar del todo: $errores_de_analisis (no cortan el build)."
+            if [ "$((bloqueantes + advertencias + informativos))" -gt 0 ]; then
+              echo
+              echo "| Severidad | Regla | Ubicación |"
+              echo "|---|---|---|"
+              jq -r '.results | sort_by(.extra.severity, .check_id, .path) | .[] |
+                "| \(.extra.severity) | `\(.check_id)` | `\(.path):\(.start.line)` |"' "$reporte"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          fallo=0
+          if [ "$bloqueantes" -gt 0 ]; then
+            echo "::error::Semgrep: $bloqueantes hallazgos ERROR/CRITICAL/HIGH (el máximo es 0)"
+            fallo=1
+          fi
+          if [ "$advertencias" -gt "$SEMGREP_MAX_WARNINGS" ]; then
+            echo "::error::Semgrep: $advertencias hallazgos WARNING/MEDIUM (el máximo es $SEMGREP_MAX_WARNINGS)"
+            fallo=1
+          fi
+          exit "$fallo"
+
+  dependencias:
+    name: Dependencias (Trivy fs)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Bajar la base de vulnerabilidades
+        id: db
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$RUNNER_TEMP/trivy-cache:/cache" \
+            "$TRIVY_IMAGE" image --cache-dir /cache --download-db-only --no-progress
+
+      - name: Gate de dependencias (CRITICAL y HIGH con parche disponible)
+        run: |
+          set +e
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/trivy-cache:/cache" -w /src \
+            "$TRIVY_IMAGE" fs --cache-dir /cache --skip-db-update --no-progress \
+            --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed \
+            --ignorefile .trivyignore --exit-code 1 . > "$RUNNER_TEMP/trivy-fs-gate.txt"
+          estado=$?
+          set -e
+          cat "$RUNNER_TEMP/trivy-fs-gate.txt"
+          {
+            echo "## Dependencias: gate (CRITICAL/HIGH con parche, menos .trivyignore)"
+            echo '```text'
+            cat "$RUNNER_TEMP/trivy-fs-gate.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$estado"
+
+      - name: Informe de dependencias (también sin parche; no corta el build)
+        if: ${{ !cancelled() && steps.db.outcome == 'success' }}
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/trivy-cache:/cache" -w /src \
+            "$TRIVY_IMAGE" fs --cache-dir /cache --skip-db-update --no-progress \
+            --scanners vuln --severity CRITICAL,HIGH --exit-code 0 . > "$RUNNER_TEMP/trivy-fs-informe.txt"
+          {
+            echo "## Dependencias: informe completo (incluye las que no tienen parche)"
+            echo '```text'
+            cat "$RUNNER_TEMP/trivy-fs-informe.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  imagenes:
+    name: Imágenes (build, escaneo y prueba de humo)
+    needs: [secretos, sast, dependencias]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Construir las seis imágenes
+        run: |
+          creada="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for s in $SERVICIOS; do
+            dir="src/$s"
+            if [ "$s" = carts ]; then dir=src/cart; fi
+            echo "::group::docker build tero-$s ($dir)"
+            # :ci identifica la imagen en este job. :latest es el nombre que compose le da por
+            # defecto a la imagen del servicio en el proyecto "tero" (<proyecto>-<servicio>),
+            # así "up --no-build" usa esta misma imagen en lugar de construir otra.
+            docker build --pull \
+              --label "org.opencontainers.image.source=$REPO_URL" \
+              --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+              --label "org.opencontainers.image.created=$creada" \
+              --label "org.opencontainers.image.title=tero-$s" \
+              -t "tero-$s:ci" -t "tero-$s:latest" "$dir"
+            echo "::endgroup::"
+          done
+
+      - name: Exportar las imágenes (lo que se escanea es lo que se publica)
+        run: |
+          mkdir -p "$RUNNER_TEMP/imagenes"
+          cd "$RUNNER_TEMP/imagenes"
+          for s in $SERVICIOS; do
+            docker save -o "tero-$s.tar" "tero-$s:ci"
+            echo "tero-$s $(docker image inspect --format '{{.Id}}' "tero-$s:ci")" >> ids.txt
+          done
+          sha256sum tero-*.tar > SHA256SUMS
+          cat ids.txt SHA256SUMS
+
+      - name: Bajar la base de vulnerabilidades
+        id: db
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$RUNNER_TEMP/trivy-cache:/cache" \
+            "$TRIVY_IMAGE" image --cache-dir /cache --download-db-only --no-progress
+
+      - name: Gate de imágenes (CRITICAL y HIGH con parche disponible)
+        run: |
+          # Trivy lee el tar exportado (--input), sin acceso al socket de Docker
+          fallas=""
+          echo "## Imágenes: gate (CRITICAL/HIGH con parche, menos .trivyignore)" >> "$GITHUB_STEP_SUMMARY"
+          for s in $SERVICIOS; do
+            set +e
+            docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+              -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/trivy-cache:/cache" \
+              -v "$RUNNER_TEMP/imagenes:/imagenes:ro" -w /src \
+              "$TRIVY_IMAGE" image --cache-dir /cache --skip-db-update --no-progress \
+              --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed \
+              --ignorefile .trivyignore --exit-code 1 \
+              --input "/imagenes/tero-$s.tar" > "$RUNNER_TEMP/trivy-$s.txt"
+            estado=$?
+            set -e
+            cat "$RUNNER_TEMP/trivy-$s.txt"
+            if [ "$estado" -ne 0 ]; then fallas="$fallas tero-$s"; fi
+            {
+              echo "### tero-$s"
+              echo '```text'
+              cat "$RUNNER_TEMP/trivy-$s.txt"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+          if [ -n "$fallas" ]; then
+            echo "::error::Imágenes que no pasan el gate:$fallas"
+            exit 1
+          fi
+
+      - name: Informe de imágenes (también sin parche; no corta el build)
+        if: ${{ !cancelled() && steps.db.outcome == 'success' }}
+        run: |
+          echo "## Imágenes: informe completo (incluye las que no tienen parche)" >> "$GITHUB_STEP_SUMMARY"
+          for s in $SERVICIOS; do
+            docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+              -v "$RUNNER_TEMP/trivy-cache:/cache" -v "$RUNNER_TEMP/imagenes:/imagenes:ro" \
+              "$TRIVY_IMAGE" image --cache-dir /cache --skip-db-update --no-progress \
+              --scanners vuln --severity CRITICAL,HIGH --exit-code 0 \
+              --input "/imagenes/tero-$s.tar" > "$RUNNER_TEMP/trivy-informe-$s.txt"
+            {
+              echo "### tero-$s"
+              echo '```text'
+              cat "$RUNNER_TEMP/trivy-informe-$s.txt"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Generar un .env efímero
+        run: |
+          # Valores nuevos en cada corrida, ocultos en los logs con add-mask antes de usarlos.
+          # Solo hexadecimales, como pide .env.example.
+          umask 077
+          postgres_password="$(openssl rand -hex 32)"
+          admin_password="$(openssl rand -hex 32)"
+          admin_jwt_secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$postgres_password"
+          echo "::add-mask::$admin_password"
+          echo "::add-mask::$admin_jwt_secret"
+          {
+            echo "POSTGRES_PASSWORD=$postgres_password"
+            echo "ADMIN_USERNAME=admin"
+            echo "ADMIN_PASSWORD=$admin_password"
+            echo "ADMIN_JWT_SECRET=$admin_jwt_secret"
+          } > .env
+
+      - name: Levantar el stack con las imágenes escaneadas
+        run: |
+          docker compose -p tero up -d --no-build --quiet-pull
+          # Cada contenedor tiene que correr exactamente la imagen que se escaneó
+          for s in $SERVICIOS; do
+            esperada="$(docker image inspect --format '{{.Id}}' "tero-$s:ci")"
+            for c in $(docker compose -p tero ps -q "$s"); do
+              usada="$(docker inspect --format '{{.Image}}' "$c")"
+              if [ "$usada" != "$esperada" ]; then
+                echo "::error::$s corre $usada y no la imagen escaneada $esperada"
+                exit 1
+              fi
+            done
+          done
+
+      - name: Prueba de humo
+        run: bash scripts/smoke-test.sh tero
+
+      - name: Diagnóstico si algo falló
+        if: ${{ failure() }}
+        run: |
+          if [ -f .env ]; then
+            docker compose -p tero ps -a
+            docker compose -p tero logs --no-color --timestamps
+          fi
+
+      - name: Bajar el stack
+        if: ${{ always() }}
+        run: |
+          # compose necesita el .env para interpolar el archivo, también en "down"
+          if [ -f .env ]; then docker compose -p tero down -v --remove-orphans; fi
+          rm -f .env
+
+      - name: Pasar las imágenes a publicar
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: imagenes
+          path: ${{ runner.temp }}/imagenes
+          if-no-files-found: error
+          retention-days: 1
+
+  publicar:
+    name: Publicar en GHCR
+    needs: [secretos, sast, dependencias, imagenes]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Único job con escritura. No hace checkout ni corre código del repositorio: solo carga
+    # los tar que imagenes escaneó y probó, y los sube.
+    permissions:
+      packages: write
+    outputs:
+      publicadas: ${{ steps.push.outputs.publicadas }}
+    steps:
+      - name: Traer las imágenes escaneadas
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: imagenes
+          path: ${{ runner.temp }}/imagenes
+
+      - name: Verificar y cargar las imágenes
+        run: |
+          cd "$RUNNER_TEMP/imagenes"
+          # Los mismos bytes que escaneó Trivy, y la misma imagen que corrió la prueba de humo
+          sha256sum -c SHA256SUMS
+          for s in $SERVICIOS; do
+            docker load -i "tero-$s.tar"
+            esperada="$(awk -v n="tero-$s" '$1 == n { print $2 }' ids.txt)"
+            cargada="$(docker image inspect --format '{{.Id}}' "tero-$s:ci")"
+            if [ -z "$esperada" ] || [ "$cargada" != "$esperada" ]; then
+              echo "::error::tero-$s: se cargó $cargada y se esperaba '$esperada'"
+              exit 1
+            fi
+          done
+
+      - name: Login en GHCR
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Publicar con tag = SHA del commit
+        id: push
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}" # GHCR exige minúsculas
+          declare -A digests
+          # Primero todas las imágenes con el SHA; :main se mueve solo si las seis subieron
+          for s in $SERVICIOS; do
+            repo="ghcr.io/$owner/tero-$s"
+            docker tag "tero-$s:ci" "$repo:$GITHUB_SHA"
+            salida="$(docker push "$repo:$GITHUB_SHA")"
+            echo "$salida"
+            # docker push termina con "<tag>: digest: sha256:... size: N"
+            digests[$s]="$(sed -n 's/.*digest: \(sha256:[0-9a-f]\{64\}\).*/\1/p' <<< "$salida" | tail -n 1)"
+          done
+          for s in $SERVICIOS; do
+            docker tag "tero-$s:ci" "ghcr.io/$owner/tero-$s:main"
+            docker push "ghcr.io/$owner/tero-$s:main"
+          done
+          {
+            echo "## Imágenes publicadas"
+            echo "| Imagen | Digest |"
+            echo "|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          delimitador="EOF_$(openssl rand -hex 8)"
+          echo "publicadas<<$delimitador" >> "$GITHUB_OUTPUT"
+          for s in $SERVICIOS; do
+            repo="ghcr.io/$owner/tero-$s"
+            digest="${digests[$s]:-no informado por docker push}"
+            echo "| \`$repo:$GITHUB_SHA\` (también \`:main\`) | \`$digest\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "$repo:$GITHUB_SHA $digest" >> "$GITHUB_OUTPUT"
+          done
+          echo "$delimitador" >> "$GITHUB_OUTPUT"
+
+      - name: Logout de GHCR
+        if: ${{ always() }}
+        run: docker logout ghcr.io
+
+  resumen:
+    name: Resumen
+    needs: [secretos, sast, dependencias, imagenes, publicar]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Resultado de cada gate
+        env:
+          SECRETOS: ${{ needs.secretos.result }}
+          SAST: ${{ needs.sast.result }}
+          DEPENDENCIAS: ${{ needs.dependencias.result }}
+          IMAGENES: ${{ needs.imagenes.result }}
+          PUBLICAR: ${{ needs.publicar.result }}
+          PUBLICADAS: ${{ needs.publicar.outputs.publicadas }}
+        run: |
+          estado() {
+            case "$1" in
+              success) echo "pasó" ;;
+              failure) echo "**falló**" ;;
+              skipped) echo "no corrió" ;;
+              cancelled) echo "cancelado" ;;
+              *) echo "$1" ;;
+            esac
+          }
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            publicacion="$(estado "$PUBLICAR")"
+          else
+            publicacion="no corresponde (solo en push a main)"
+          fi
+          {
+            echo "## Resumen de CI"
+            echo "Commit: \`$GITHUB_SHA\` ($GITHUB_EVENT_NAME en \`$GITHUB_REF\`)"
+            echo
+            echo "| Gate | Resultado |"
+            echo "|---|---|"
+            echo "| Secretos (Gitleaks, todo el historial) | $(estado "$SECRETOS") |"
+            echo "| SAST y quality gate (Semgrep) | $(estado "$SAST") |"
+            echo "| Dependencias (Trivy fs) | $(estado "$DEPENDENCIAS") |"
+            echo "| Imágenes: escaneo y prueba de humo | $(estado "$IMAGENES") |"
+            echo "| Publicación en GHCR | $publicacion |"
+            if [ -n "$PUBLICADAS" ]; then
+              echo
+              echo "Imágenes publicadas:"
+              echo '```text'
+              echo "$PUBLICADAS"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

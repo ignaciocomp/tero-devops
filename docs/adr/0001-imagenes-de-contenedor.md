@@ -5,6 +5,7 @@
 - **Relacionada con:** el requisito de containerización de la entrega y dos observaciones de la auditoría:
   - 2: "las imágenes se construyen en un solo paso sobre imágenes base completas y corren como root";
   - 5: "no se puede repetir un despliegue de la misma manera".
+- **Actualización (2026-11-22):** el builder de Go pasó de `golang:1.24-trixie` a `golang:1.27-trixie`, y carts aplica en el build los parches de Debian que la imagen base todavía no trae, por las vulnerabilidades que encontró el escaneo de imágenes (ver el [ADR 0003](0003-ci-y-quality-gates.md) y el [informe de seguridad](../informes/seguridad.md)). Las mediciones de este ADR son de la versión original.
 
 ## Contexto
 

@@ -1,0 +1,17 @@
+# Excepciones de Gitleaks (fingerprints commit:archivo:regla:línea).
+# Son las credenciales de ejemplo del commit inicial 56fd8cb (retailpassword, admin,
+# change-me-in-production) en docker-compose.yml y src/admin/src/app.ts. Ya se rotaron y se
+# sacaron del código en 8a25c88 (PR #1): hoy los secretos salen de .env y no tienen default.
+# Quedan en el historial público; reescribirlo no las vuelve secretas, por eso se aceptan.
+# Solo valen para ese commit: un secreto nuevo en cualquier otro commit vuelve a fallar.
+# Revisar: 2026-12-31.
+56fd8cbb2705aaf5ffec832b8a5c692e68ef28e8:docker-compose.yml:tero-compose-env-literal-password:6
+56fd8cbb2705aaf5ffec832b8a5c692e68ef28e8:docker-compose.yml:tero-compose-env-literal-password:35
+56fd8cbb2705aaf5ffec832b8a5c692e68ef28e8:docker-compose.yml:tero-compose-env-literal-password:50
+56fd8cbb2705aaf5ffec832b8a5c692e68ef28e8:docker-compose.yml:tero-compose-env-literal-password:65
+56fd8cbb2705aaf5ffec832b8a5c692e68ef28e8:docker-compose.yml:tero-compose-env-literal-password:106
+56fd8cbb2705aaf5ffec832b8a5c692e68ef28e8:docker-compose.yml:tero-compose-env-literal-password:108
+56fd8cbb2705aaf5ffec832b8a5c692e68ef28e8:docker-compose.yml:tero-compose-env-literal-password:109
+56fd8cbb2705aaf5ffec832b8a5c692e68ef28e8:src/admin/src/app.ts:tero-js-default-password:12
+56fd8cbb2705aaf5ffec832b8a5c692e68ef28e8:src/admin/src/app.ts:tero-js-default-password:14
+56fd8cbb2705aaf5ffec832b8a5c692e68ef28e8:src/admin/src/app.ts:tero-js-default-password:18

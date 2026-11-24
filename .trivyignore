@@ -1,0 +1,18 @@
+# Excepciones de Trivy: vulnerabilidades CRITICAL/HIGH que YA TIENEN parche publicado pero
+# todavía no se pueden aplicar. Por ejemplo: Debian publicó el parche y la imagen base
+# distroless todavía no lo trae, o el parche exige un cambio de versión mayor planificado en
+# otro bloque. Cada entrada lleva justificación y un vencimiento corto (exp:): al vencer,
+# Trivy deja de ignorarla y el gate vuelve a fallar.
+#
+# Las vulnerabilidades SIN parche no van acá. El gate corre con --ignore-unfixed, así que no
+# lo hacen fallar, y el paso de informe del pipeline las lista en cada corrida. Si estuvieran
+# en este archivo, Trivy las seguiría ignorando después de que salga el parche, hasta el
+# vencimiento, y el gate pasaría con una vulnerabilidad que ya tiene arreglo. Se documentan,
+# con su justificación y fecha de revisión, en docs/informes/seguridad.md.
+#
+# Formato (ver "Cómo se maneja una excepción" en docs/adr/0003-ci-y-quality-gates.md):
+#   # CVE-AAAA-NNNNN: <paquete> <versión> en tero-<servicio>. Por qué no se aplica el
+#   # parche todavía, por qué el riesgo es aceptable mientras tanto y quién la revisa.
+#   CVE-AAAA-NNNNN exp:AAAA-MM-DD
+#
+# Hoy no hay ninguna.

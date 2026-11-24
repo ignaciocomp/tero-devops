@@ -85,6 +85,22 @@ docker compose logs -f <servicio>
 bash scripts/smoke-test.sh
 ```
 
+## Integración continua
+
+Cada PR y cada push a `main` corren el workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Las decisiones y los umbrales están en el [ADR 0003](docs/adr/0003-ci-y-quality-gates.md).
+
+| Gate | Herramienta | Frena el pipeline si |
+|---|---|---|
+| Secretos | Gitleaks sobre todo el historial, con las reglas de `.gitleaks.toml` | encuentra un secreto que no esté en `.gitleaksignore` |
+| SAST y calidad | Semgrep | hay un hallazgo ERROR, o más WARNING/MEDIUM que el umbral |
+| Dependencias | Trivy sobre el repo | hay una vulnerabilidad CRITICAL o HIGH con parche disponible |
+| Imágenes | Trivy sobre cada una de las seis imágenes, antes de publicarlas | lo mismo, para paquetes del sistema y de cada lenguaje |
+| Prueba de humo | `scripts/smoke-test.sh` con el stack levantado con esas mismas imágenes | falla alguna prueba |
+
+Por ahora el pipeline avisa pero no impide el merge: eso empieza cuando sus checks sean obligatorios en la protección de `main` (issue #16).
+
+Solo en un push a `main`, y si pasó todo lo anterior, las seis imágenes se publican en GHCR como `ghcr.io/ignaciocomp/tero-<servicio>:<SHA del commit>`. Así se sabe exactamente qué código corre cada imagen. El resultado de cada gate aparece en el resumen de la corrida, en la pestaña Actions. Los hallazgos, lo que se corrigió y las excepciones están en el [informe de seguridad](docs/informes/seguridad.md) y en el [informe de análisis estático](docs/informes/analisis-estatico.md).
+
 ---
 
 ## Arquitectura de microservicios
@@ -148,10 +164,10 @@ bash scripts/smoke-test.sh
 | Servicio     | Lenguaje    | Framework     | Imagen final                     | Persistencia | Puerto externo |
 |--------------|-------------|---------------|----------------------------------|--------------|----------------|
 | **ui**       | TypeScript  | Express       | `distroless/nodejs22-debian13`   | —            | 127.0.0.1:8080 |
-| **catalog**  | Go 1.24     | Gin + GORM    | `distroless/base-nossl-debian13` | PostgreSQL   | —              |
+| **catalog**  | Go 1.27     | Gin + GORM    | `distroless/base-nossl-debian13` | PostgreSQL   | —              |
 | **carts**    | Python 3.12 | FastAPI       | `python:3.12-slim-trixie`        | PostgreSQL   | —              |
 | **checkout** | TypeScript  | NestJS        | `distroless/nodejs22-debian13`   | Redis        | —              |
-| **orders**   | Go 1.24     | Gin + GORM    | `distroless/static-debian13`     | PostgreSQL   | —              |
+| **orders**   | Go 1.27     | Gin + GORM    | `distroless/static-debian13`     | PostgreSQL   | —              |
 | **admin**    | TypeScript  | Express       | `distroless/nodejs22-debian13`   | PostgreSQL   | 127.0.0.1:8081 |
 | **db**       | —           | PostgreSQL 16 | `postgres:16`                    | —            | —              |
 | **redis**    | —           | Redis 7       | `redis:7-alpine`                 | —            | —              |
@@ -227,11 +243,17 @@ Las contraseñas y el secreto JWT no tienen valor por defecto: se definen en `.e
 
 ```
 tero-devops/
+├── .github/
+│   └── workflows/
+│       └── ci.yml      # CI: gates de seguridad y calidad, imágenes y publicación
 ├── .env.example        # Plantilla de variables (el .env real no se versiona)
+├── .gitleaks.toml      # Reglas de secretos (y .gitleaksignore con las excepciones)
+├── .trivyignore        # Excepciones de Trivy: CVE con parche que todavía no se puede aplicar
 ├── docker-compose.yml
 ├── init-db.sql
 ├── docs/
-│   └── adr/            # Decisiones de arquitectura (ADR)
+│   ├── adr/            # Decisiones de arquitectura (ADR)
+│   └── informes/       # Informes de seguridad y de análisis estático
 ├── scripts/
 │   └── smoke-test.sh   # Prueba de humo del stack
 └── src/

@@ -3,7 +3,7 @@
 
 # ---- Etapa 1: build --------------------------------------------------------
 # Imagen completa de Go: trae el compilador, pero no llega a la imagen final.
-FROM golang:1.24-trixie AS build
+FROM golang:1.27-trixie AS build
 WORKDIR /src
 # Primero solo los manifiestos: si no cambian, Docker reutiliza la capa de dependencias.
 COPY go.mod go.sum ./
