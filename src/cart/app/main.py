@@ -2,6 +2,7 @@ import logging
 import time
 
 from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.config import settings
 from app.logging_config import configure_logging
@@ -26,7 +27,10 @@ async def log_requests(request: Request, call_next):
     except Exception:
         fields.update(status=500, duration_ms=round((time.perf_counter() - start) * 1000, 3))
         log.exception("request", extra=fields)
-        raise
+        # Se responde el 500 acá en lugar de relanzar: si se relanza, uvicorn vuelve a
+        # registrar la misma excepción ("Exception in ASGI application") y cada error queda
+        # dos veces. Es la misma respuesta que da Starlette.
+        return PlainTextResponse("Internal Server Error", status_code=500)
     if path != "/health":
         status = response.status_code
         level = logging.ERROR if status >= 500 else logging.WARNING if status >= 400 else logging.INFO
