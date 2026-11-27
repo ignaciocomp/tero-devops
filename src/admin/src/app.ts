@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
 import crypto from 'crypto';
 import path from 'path';
-import { createLogger, logProcessEvents, requestLogger } from './logger';
+import { createLogger, errorHandler, logProcessEvents, requestLogger } from './logger';
 
 const logger = createLogger('admin');
 logProcessEvents(logger);
@@ -164,6 +164,9 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.get('*', (_req: Request, res: Response): void => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
+
+// Último: los errores que no manejó ninguna ruta salen en JSON (ver logger.ts)
+app.use(errorHandler(logger));
 
 const port = parseInt(process.env.PORT || '8080');
 app.listen(port, () => logger.info('listening', { port }));

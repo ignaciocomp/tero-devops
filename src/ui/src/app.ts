@@ -2,7 +2,7 @@ import express from 'express';
 import type { IncomingMessage } from 'http';
 import path from 'path';
 import { createProxyMiddleware, type Plugin } from 'http-proxy-middleware';
-import { createLogger, logProcessEvents, requestLogger } from './logger';
+import { createLogger, errorHandler, logProcessEvents, requestLogger } from './logger';
 
 const logger = createLogger('ui');
 logProcessEvents(logger);
@@ -43,6 +43,9 @@ app.use('/api/orders',   createProxyMiddleware({ target: ORDERS_URL,   changeOri
 app.use(express.static(path.join(__dirname, '../public')));
 
 app.get('/health', (_req, res) => res.send('OK'));
+
+// Último: los errores que no manejó ninguna ruta salen en JSON (ver logger.ts)
+app.use(errorHandler(logger));
 
 const port = parseInt(process.env.PORT || '8080', 10);
 app.listen(port, () => logger.info('listening', { port }));

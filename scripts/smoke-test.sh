@@ -115,6 +115,10 @@ check "admin: GET /auth/me con la cookie" 200 "$(code -b "$TMP/jar" "$ADMIN/auth
 check "admin: GET /admin/api/products (lee catalogdb)" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/products")"
 check "admin: GET /admin/api/orders (lee orders)" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/orders")"
 check "admin: GET /admin/api/orders sin cookie" 401 "$(code "$ADMIN/admin/api/orders")"
+# Un login con un JSON roto que lleva una marca corta. Tiene que dar 400 sin dejar texto ni un
+# pedazo del body en los logs: lo comprueban, abajo, json_logs y la prueba de la marca.
+MARCA="zq$RANDOM"
+check "admin: login con un JSON roto" 400 "$(code -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"password\":$MARCA}" "$ADMIN/auth/login")"
 
 # Logs: los seis servicios escriben una línea JSON por evento, con los mismos campos
 for s in ui catalog carts orders checkout admin; do
@@ -125,6 +129,7 @@ done
 SECRETS="$("${COMPOSE[@]}" config --format json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=JSON.parse(s).services;process.stdout.write(JSON.stringify([v.db.environment.POSTGRES_PASSWORD,v.admin.environment.ADMIN_PASSWORD,v.admin.environment.ADMIN_JWT_SECRET]))})')"
 check "logs: no aparecen los secretos del .env" ninguno "$("${COMPOSE[@]}" logs --no-color 2>&1 | TERO_SECRETS="$SECRETS" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const sec=JSON.parse(process.env.TERO_SECRETS||"[]").filter(Boolean);console.log(sec.length<3?"faltan-secretos":sec.some(x=>s.includes(x))?"aparecen":"ninguno")})')"
 unset SECRETS
+check "logs: no aparece el body del login roto" ninguno "$("${COMPOSE[@]}" logs --no-color 2>&1 | grep -c -- "$MARCA" | sed 's/^0$/ninguno/')"
 
 # Red: de los 8 servicios de docker-compose.yml, solo ui y admin se publican en el host, en 127.0.0.1
 for s in db redis catalog carts orders checkout; do
