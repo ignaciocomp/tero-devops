@@ -51,7 +51,14 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
 // ── Auth routes ────────────────────────────────────────────────────────────
 
 app.post('/auth/login', (req: Request, res: Response): void => {
-  const { username = '', password = '' } = req.body as { username?: string; password?: string };
+  const { username = '', password = '' } = req.body as { username?: unknown; password?: unknown };
+  // Un usuario o una clave que no son texto (un número, un objeto) se rechazan antes de usarlos.
+  // Si no, Buffer.from tira un error con el valor recibido, que termina en el log, y con
+  // {"length": N} reserva N bytes.
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    res.status(400).json({ error: 'Invalid credentials' });
+    return;
+  }
 
   // Pad buffers to same length before timing-safe compare to avoid length leak
   const pad = (a: Buffer, b: Buffer): [Buffer, Buffer] => {
