@@ -128,6 +128,10 @@ Por ahora el pipeline avisa pero no impide el merge: eso empieza cuando sus chec
 
 Solo en un push a `main`, y si pasó todo lo anterior, las seis imágenes se publican en GHCR como `ghcr.io/ignaciocomp/tero-<servicio>:<SHA del commit>`. Así se sabe exactamente qué código corre cada imagen. El resultado de cada gate aparece en el resumen de la corrida, en la pestaña Actions. Los hallazgos, lo que se corrigió y las excepciones están en el [informe de seguridad](docs/informes/seguridad.md) y en el [informe de análisis estático](docs/informes/analisis-estatico.md).
 
+## Infraestructura
+
+Los tres ambientes (Dev, Test y Prod) se definen con Terraform en [`infra/`](infra/README.md): ECS Fargate detrás de un ALB, RDS PostgreSQL, ElastiCache Redis y los secretos en Secrets Manager. Cada ambiente tiene su `.tfvars` y su estado en S3.
+
 ---
 
 ## Arquitectura de microservicios
@@ -281,6 +285,11 @@ tero-devops/
 ├── docs/
 │   ├── adr/            # Decisiones de arquitectura (ADR)
 │   └── informes/       # Informes de seguridad y de análisis estático
+├── infra/              # Terraform: Dev, Test y Prod en AWS (ver infra/README.md)
+│   ├── envs/           # Un .tfvars por ambiente
+│   ├── backends/       # Estado en S3, uno por ambiente
+│   ├── modules/        # network, ecs-service y data
+│   └── tests/          # terraform test, con providers simulados
 ├── scripts/
 │   └── smoke-test.sh   # Prueba de humo del stack
 └── src/
