@@ -26,9 +26,19 @@ func gormConfig() *gorm.Config {
 	}
 }
 
-// slogWriter adapta la interfaz Printf que usa gorm al logger por defecto (slog).
+// slogWriter adapta la interfaz Printf que usa gorm al logger por defecto (slog). gorm usa
+// este único Printf para todo: consultas lentas, errores de SQL y errores de conexión. Si
+// algún argumento es un error, la línea va como error, así una caída de la base aparece en
+// el grep de errores y en las alarmas. Las consultas lentas siguen como warn.
 type slogWriter struct{}
 
 func (slogWriter) Printf(format string, args ...interface{}) {
-	slog.Warn(strings.TrimSpace(fmt.Sprintf(format, args...)), "component", "gorm")
+	msg := strings.TrimSpace(fmt.Sprintf(format, args...))
+	for _, a := range args {
+		if _, ok := a.(error); ok {
+			slog.Error(msg, "component", "gorm")
+			return
+		}
+	}
+	slog.Warn(msg, "component", "gorm")
 }
