@@ -1,0 +1,6 @@
+# Estado de test. El bucket no va acá porque su nombre depende de la cuenta: se pasa en el init.
+#   terraform init -backend-config=backends/test.s3.tfbackend -backend-config="bucket=$TF_STATE_BUCKET"
+key          = "tero/test/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true
