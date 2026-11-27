@@ -3,6 +3,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ICheckoutRepository } from './ICheckoutRepository';
 import { Redis } from 'ioredis';
+import { errorText } from '../../json-logger';
 
 @Injectable()
 export class RedisCheckoutRepository
@@ -87,8 +88,4 @@ export class RedisCheckoutRepository
       return false;
     }
   }
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? (error.stack ?? error.message) : String(error);
 }

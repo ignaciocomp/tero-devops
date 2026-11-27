@@ -38,18 +38,20 @@ export class JsonLogger implements LoggerService {
     const fields: Record<string, unknown> = {};
     const rest = [...params];
     // Nest pasa el contexto (el nombre de la clase) como último parámetro, y en los errores
-    // el stack antes del contexto.
+    // el stack antes del contexto. Si el error no trae stack, Nest deja undefined en ese
+    // lugar: se descarta, para no registrar "details":[null].
     if (rest.length > 0 && typeof rest[rest.length - 1] === 'string') {
       fields.context = rest.pop();
     }
-    if (level === 'error' && rest.length > 0 && typeof rest[0] === 'string') {
-      fields.error = rest.shift();
+    if (level === 'error' && rest.length > 0 && (typeof rest[0] === 'string' || rest[0] === undefined)) {
+      const stack = rest.shift();
+      if (stack !== undefined) fields.error = stack;
     }
 
     let msg: string;
     if (message instanceof Error) {
       msg = message.message;
-      fields.error = message.stack;
+      fields.error = errorText(message);
     } else if (message !== null && typeof message === 'object') {
       // Un objeto se registra como campos: { msg, method, path, ... }
       const { msg: text, ...others } = message as Record<string, unknown>;
@@ -59,7 +61,7 @@ export class JsonLogger implements LoggerService {
       msg = String(message);
     }
     if (rest.length > 0) {
-      fields.details = rest.map((r) => (r instanceof Error ? r.stack : r));
+      fields.details = rest.map((r) => (r instanceof Error ? errorText(r) : r));
     }
 
     const line = JSON.stringify({
@@ -71,4 +73,25 @@ export class JsonLogger implements LoggerService {
     });
     process.stdout.write(line + '\n');
   }
+}
+
+// Texto de un error para el campo "error": el stack más la cadena de causas. El stack no
+// incluye err.cause, y ahí suele estar el motivo real: el "fetch failed" de undici trae el
+// ECONNREFUSED o el EAI_AGAIN solo en la causa. De cada causa van el nombre, el mensaje y el
+// código. No se usa util.inspect porque ioredis guarda en sus errores los argumentos del
+// comando.
+export function errorText(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  let text = error.stack ?? `${error.name}: ${error.message}`;
+  let cause = (error as { cause?: unknown }).cause;
+  for (let i = 0; i < 5 && cause !== undefined && cause !== null; i++) {
+    if (!(cause instanceof Error)) {
+      text += `\n[cause] ${String(cause)}`;
+      break;
+    }
+    const code = (cause as { code?: unknown }).code;
+    text += `\n[cause] ${cause.name}: ${cause.message}${code === undefined ? '' : ` (${String(code)})`}`;
+    cause = (cause as { cause?: unknown }).cause;
+  }
+  return text;
 }
