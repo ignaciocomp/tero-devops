@@ -40,7 +40,7 @@ func createPostgreSQLDatabase(config config.DatabaseConfiguration) (*gorm.DB, er
 	var err error
 
 	for i := 0; i < 6; i++ {
-		db, err = gorm.Open(postgres.Open(dsn), gormConfig())
+		db, err = openGorm(postgres.Open(dsn))
 		if err == nil {
 			return db, nil
 		}

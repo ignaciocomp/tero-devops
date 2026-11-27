@@ -69,7 +69,7 @@ func main() {
 
 	var err error
 	for i := 0; i < 6; i++ {
-		db, err = gorm.Open(postgres.Open(dsn), gormConfig())
+		db, err = openGorm(postgres.Open(dsn))
 		if err == nil {
 			break
 		}
