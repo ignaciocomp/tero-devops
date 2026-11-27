@@ -40,7 +40,7 @@ resumen: corre siempre al final, con el resultado de los cinco
 | Análisis estático (calidad) | Semgrep 1.186.0 | Lo mismo | Los hallazgos WARNING o MEDIUM superan `SEMGREP_MAX_WARNINGS` (hoy 1, la línea base medida) | Se baja el umbral con un PR |
 | Dependencias (SCA) | Trivy 0.76.2 `fs` | `package-lock.json`, `yarn.lock`, `go.mod` y `requirements.txt` | Hay una vulnerabilidad CRITICAL o HIGH **con parche disponible** | `.trivyignore`, solo si tiene parche y no se puede aplicar todavía; con justificación y vencimiento |
 | Imágenes | Trivy 0.76.2 `image` | El tar de cada una de las seis imágenes: paquetes de Debian y dependencias de cada lenguaje | Igual que dependencias | `.trivyignore` |
-| Prueba de humo | `scripts/smoke-test.sh` | El stack levantado con las imágenes escaneadas | Falla alguna de las 27 pruebas | No hay |
+| Prueba de humo | `scripts/smoke-test.sh` | El stack levantado con las imágenes escaneadas | Falla alguna prueba (eran 27 al escribir este ADR) | No hay |
 
 Semgrep mezcla dos escalas de severidad según la regla: la clásica (ERROR, WARNING, INFO) y la nueva (CRITICAL, HIGH, MEDIUM, LOW). El workflow las agrupa: ERROR, CRITICAL y HIGH son el gate de seguridad; WARNING y MEDIUM, el quality gate; INFO y LOW solo se informan. El resumen de cada corrida muestra los conteos y la lista de hallazgos, y el JSON completo queda como artifact (`semgrep`) durante 30 días.
 

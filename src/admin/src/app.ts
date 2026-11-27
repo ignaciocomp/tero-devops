@@ -4,8 +4,13 @@ import jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
 import crypto from 'crypto';
 import path from 'path';
+import { createLogger, logProcessEvents, requestLogger } from './logger';
+
+const logger = createLogger('admin');
+logProcessEvents(logger);
 
 const app = express();
+app.use(requestLogger(logger, ['/health']));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -13,7 +18,7 @@ app.use(cookieParser());
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
-    console.error(`Falta la variable de entorno obligatoria ${name}`);
+    logger.error('Falta la variable de entorno obligatoria', { variable: name });
     process.exit(1);
   }
   return value;
@@ -161,4 +166,4 @@ app.get('*', (_req: Request, res: Response): void => {
 });
 
 const port = parseInt(process.env.PORT || '8080');
-app.listen(port, () => console.log(`Admin listening on :${port}`));
+app.listen(port, () => logger.info('listening', { port }));

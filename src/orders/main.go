@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -58,26 +59,33 @@ type CreateOrderRequest struct {
 var db *gorm.DB
 
 func main() {
+	logger := newLogger("orders")
+	slog.SetDefault(logger)
+	// gin escribe texto en DefaultWriter (por ejemplo, las rutas en modo debug): se descarta
+	// para que la salida sea solo JSON.
+	gin.DefaultWriter = io.Discard
+
 	dsn := buildDSN()
 
 	var err error
 	for i := 0; i < 6; i++ {
-		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		db, err = gorm.Open(postgres.Open(dsn), gormConfig())
 		if err == nil {
 			break
 		}
-		fmt.Printf("Waiting for PostgreSQL... (%v)\n", err)
+		slog.Warn("waiting for PostgreSQL", "error", err.Error())
 		time.Sleep(5 * time.Second)
 	}
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		fatal("failed to connect to database", err)
 	}
 
 	if err := db.AutoMigrate(&Order{}, &OrderItem{}); err != nil {
-		log.Fatal("Failed to migrate schema:", err)
+		fatal("failed to migrate schema", err)
 	}
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(requestLogger(logger, "/health"), recovery(logger))
 
 	p := ginprometheus.NewPrometheus("gin")
 	p.Use(r)
@@ -90,8 +98,9 @@ func main() {
 	r.POST("/orders", createOrder)
 
 	port := getEnv("PORT", "8080")
+	slog.Info("listening", "port", port)
 	if err := r.Run(":" + port); err != nil {
-		log.Fatal(err)
+		fatal("listen", err)
 	}
 }
 
@@ -122,6 +131,7 @@ func createOrder(c *gin.Context) {
 	order.Items = req.Items
 
 	if err := db.Create(&order).Error; err != nil {
+		_ = c.Error(err) // el requestLogger lo agrega al log del request
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

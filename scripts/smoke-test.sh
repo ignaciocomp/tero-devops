@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Prueba de humo de Tero: recorre los seis servicios a través de la UI y del panel de admin.
-# Al final comprueba qué publica cada servicio en el host: solo ui y admin, y en 127.0.0.1.
+# Después comprueba que los seis escriben sus logs en JSON, sin los secretos del .env, y qué
+# publica cada servicio en el host: solo ui y admin, y en 127.0.0.1.
 #
 # Requisitos: el stack levantado (docker compose up -d), el .env completo, curl y node.
 # Uso:        bash scripts/smoke-test.sh [proyecto-de-compose]
@@ -53,6 +54,29 @@ published() { # direcciones que el servicio publica en el host, todas: "docker p
   ports="$(printf '%s' "$ports" | tr -d '\r' | sed '/^$/d; s/.* -> //' | sort -u | paste -sd, -)"
   echo "${ports:-ninguno}"
 }
+json_logs() { # "ok" si cada línea de los logs del servicio es JSON con time, level, service y msg,
+              # y hay al menos un request con method, path, status y duration_ms
+  "${COMPOSE[@]}" logs --no-color --no-log-prefix "$1" 2>&1 | node -e '
+    const svc = process.argv[1];
+    const niveles = ["debug", "info", "warn", "error"];
+    let s = "";
+    process.stdin.on("data", (d) => (s += d)).on("end", () => {
+      const lineas = s.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim());
+      if (!lineas.length) return console.log("sin-logs");
+      let malas = 0, primera = "", requests = 0;
+      for (const l of lineas) {
+        let e = null;
+        try { e = JSON.parse(l); } catch {}
+        const valida = e && typeof e.time === "string" && niveles.includes(e.level) &&
+          e.service === svc && typeof e.msg === "string";
+        if (!valida) { malas++; if (!primera) primera = l.slice(0, 80); continue; }
+        if (e.msg === "request" && typeof e.method === "string" && typeof e.path === "string" &&
+            Number.isInteger(e.status) && typeof e.duration_ms === "number") requests++;
+      }
+      if (malas) return console.log(`${malas} de ${lineas.length} líneas no cumplen: ${primera}`);
+      console.log(requests ? "ok" : "sin-requests");
+    });' "$1"
+}
 
 # Los servicios no tienen healthcheck en compose: la UI puede estar arriba antes que los
 # backends (mientras tanto el proxy devuelve 504). Se espera a cada uno a través de la UI.
@@ -91,6 +115,16 @@ check "admin: GET /auth/me con la cookie" 200 "$(code -b "$TMP/jar" "$ADMIN/auth
 check "admin: GET /admin/api/products (lee catalogdb)" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/products")"
 check "admin: GET /admin/api/orders (lee orders)" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/orders")"
 check "admin: GET /admin/api/orders sin cookie" 401 "$(code "$ADMIN/admin/api/orders")"
+
+# Logs: los seis servicios escriben una línea JSON por evento, con los mismos campos
+for s in ui catalog carts orders checkout admin; do
+  check "logs: $s escribe JSON con time, level, service, msg y los requests con campos" ok "$(json_logs "$s")"
+done
+# Ningún servicio escribe en sus logs los secretos del .env. Los valores pasan por una
+# variable de entorno de node y nunca se imprimen.
+SECRETS="$("${COMPOSE[@]}" config --format json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=JSON.parse(s).services;process.stdout.write(JSON.stringify([v.db.environment.POSTGRES_PASSWORD,v.admin.environment.ADMIN_PASSWORD,v.admin.environment.ADMIN_JWT_SECRET]))})')"
+check "logs: no aparecen los secretos del .env" ninguno "$("${COMPOSE[@]}" logs --no-color 2>&1 | TERO_SECRETS="$SECRETS" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const sec=JSON.parse(process.env.TERO_SECRETS||"[]").filter(Boolean);console.log(sec.length<3?"faltan-secretos":sec.some(x=>s.includes(x))?"aparecen":"ninguno")})')"
+unset SECRETS
 
 # Red: de los 8 servicios de docker-compose.yml, solo ui y admin se publican en el host, en 127.0.0.1
 for s in db redis catalog carts orders checkout; do
