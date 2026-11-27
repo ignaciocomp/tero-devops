@@ -93,6 +93,9 @@ check "catalog via ui: GET /api/catalog/products" 200 "$(code "$UI/api/catalog/p
 CID="smoke-$$-$RANDOM"   # un cliente distinto en cada corrida
 check "carts via ui: POST item (escribe en cartdb)" 201 "$(code -X POST -H 'Content-Type: application/json' -d '{"itemId":"smoke-item","quantity":2,"unitPrice":150}' "$UI/api/carts/$CID/items")"
 check "carts via ui: GET carrito (lee cartdb)" 200 "$(code "$UI/api/carts/$CID")"; body
+# Un id con un NUL hace fallar a carts: psycopg2 lo rechaza antes de ir a la base y carts
+# responde 500. Más abajo se comprueba que ese 500 queda registrado una sola vez.
+check "carts via ui: un id con un NUL da 500" 500 "$(code "$UI/api/carts/%00")"
 check "orders via ui: GET /api/orders" 200 "$(code "$UI/api/orders")"
 check "checkout via ui: un checkout inexistente da 404" 404 "$(code "$UI/api/checkout/$CID")"
 CHK='{"items":[{"id":"smoke-item","name":"Item de prueba","quantity":2,"price":150}],"shippingAddress":{"firstName":"Ana","lastName":"Prueba","address1":"Calle 1234","city":"Montevideo","state":"MVD","zip":"11000","email":"ana@example.com"},"deliveryOptionToken":"priority-mail"}'
@@ -119,6 +122,10 @@ check "admin: GET /admin/api/orders sin cookie" 401 "$(code "$ADMIN/admin/api/or
 # pedazo del body en los logs: lo comprueban, abajo, json_logs y la prueba de la marca.
 MARCA="zq$RANDOM"
 check "admin: login con un JSON roto" 400 "$(code -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"password\":$MARCA}" "$ADMIN/auth/login")"
+# Lo mismo con una clave que es JSON válido pero no es texto: un número. Tiene hasta 15 dígitos,
+# así JSON.parse no pierde precisión y se puede buscar tal cual en los logs.
+MARCA_NUM="97531$RANDOM$RANDOM"
+check "admin: login con una clave que no es texto" 400 "$(code -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"password\":$MARCA_NUM}" "$ADMIN/auth/login")"
 
 # Logs: los seis servicios escriben una línea JSON por evento, con los mismos campos
 for s in ui catalog carts orders checkout admin; do
@@ -129,7 +136,8 @@ done
 SECRETS="$("${COMPOSE[@]}" config --format json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=JSON.parse(s).services;process.stdout.write(JSON.stringify([v.db.environment.POSTGRES_PASSWORD,v.admin.environment.ADMIN_PASSWORD,v.admin.environment.ADMIN_JWT_SECRET]))})')"
 check "logs: no aparecen los secretos del .env" ninguno "$("${COMPOSE[@]}" logs --no-color 2>&1 | TERO_SECRETS="$SECRETS" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const sec=JSON.parse(process.env.TERO_SECRETS||"[]").filter(Boolean);console.log(sec.length<3?"faltan-secretos":sec.some(x=>s.includes(x))?"aparecen":"ninguno")})')"
 unset SECRETS
-check "logs: no aparece el body del login roto" ninguno "$("${COMPOSE[@]}" logs --no-color 2>&1 | grep -c -- "$MARCA" | sed 's/^0$/ninguno/')"
+check "logs: no aparece el body de los logins mal armados" ninguno "$("${COMPOSE[@]}" logs --no-color 2>&1 | grep -c -e "$MARCA" -e "$MARCA_NUM" | sed 's/^0$/ninguno/')"
+check "logs: carts registra cada 500 una sola vez" ninguno "$("${COMPOSE[@]}" logs --no-color carts 2>&1 | grep -c 'Exception in ASGI application' | sed 's/^0$/ninguno/')"
 
 # Red: de los 8 servicios de docker-compose.yml, solo ui y admin se publican en el host, en 127.0.0.1
 for s in db redis catalog carts orders checkout; do
