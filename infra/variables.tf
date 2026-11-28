@@ -9,8 +9,9 @@ variable "environment" {
 }
 
 variable "region" {
-  type    = string
-  default = "us-east-1"
+  description = "Región de AWS. El Learner Lab trabaja en us-east-1."
+  type        = string
+  default     = "us-east-1"
 }
 
 # ── Imágenes ──
@@ -86,27 +87,33 @@ variable "log_retention_days" {
 # ── Datos ──
 
 variable "db_instance_class" {
-  type = string
+  description = "Tipo de instancia de RDS. En el Learner Lab se permiten db.t3 y db.t4g, de micro a medium."
+  type        = string
 }
 
 variable "db_multi_az" {
-  type = bool
+  description = "Si es true, RDS mantiene una réplica en otra zona y hace failover solo."
+  type        = bool
 }
 
 variable "db_backup_retention_days" {
-  type = number
+  description = "Días de backups automáticos de la base (0 a 35). Con 0 no hay restauración a un momento dado."
+  type        = number
 }
 
 variable "deletion_protection" {
-  type = bool
+  description = "Protección contra borrado de la base y del ALB público. Para destruir el ambiente, primero se aplica con false."
+  type        = bool
 }
 
 variable "db_final_snapshot" {
-  type = bool
+  description = "Si es true, al destruir la base queda un snapshot final, con un nombre único por cada base creada."
+  type        = bool
 }
 
 variable "redis_node_type" {
-  type = string
+  description = "Tipo de nodo de ElastiCache, por ejemplo cache.t4g.micro."
+  type        = string
 }
 
 variable "secret_recovery_window_days" {

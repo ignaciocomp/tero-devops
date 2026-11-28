@@ -4,7 +4,8 @@ variable "name" {
 }
 
 variable "vpc_id" {
-  type = string
+  description = "VPC donde se crean la base, Redis y sus security groups."
+  type        = string
 }
 
 variable "subnet_ids" {
@@ -53,7 +54,8 @@ variable "db_password_version" {
 }
 
 variable "db_instance_class" {
-  type = string
+  description = "Tipo de instancia de RDS."
+  type        = string
 }
 
 variable "db_allocated_storage" {
@@ -69,7 +71,8 @@ variable "db_max_allocated_storage" {
 }
 
 variable "db_multi_az" {
-  type = bool
+  description = "Si es true, RDS mantiene una réplica en otra zona."
+  type        = bool
 }
 
 variable "db_backup_retention_days" {
@@ -83,7 +86,8 @@ variable "db_backup_retention_days" {
 }
 
 variable "db_deletion_protection" {
-  type = bool
+  description = "Protección contra borrado de la base."
+  type        = bool
 }
 
 variable "db_final_snapshot" {
@@ -94,8 +98,9 @@ variable "db_final_snapshot" {
 # ── Redis ──
 
 variable "redis_engine_version" {
-  type    = string
-  default = "7.1"
+  description = "Versión de Redis. Con 7.x, la contraseña (AUTH) y TLS van juntos."
+  type        = string
+  default     = "7.1"
 }
 
 variable "redis_parameter_group" {
@@ -116,5 +121,6 @@ variable "redis_password_version" {
 }
 
 variable "redis_node_type" {
-  type = string
+  description = "Tipo de nodo de ElastiCache."
+  type        = string
 }

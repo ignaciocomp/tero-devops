@@ -8,12 +8,19 @@ output "admin_url" {
   value       = "http://${aws_lb.this.dns_name}:8081"
 }
 
+output "image_tag" {
+  description = "SHA de la imagen desplegada. Para volver a una versión anterior, se aplica con el SHA que estaba antes."
+  value       = var.image_tag
+}
+
 output "cluster_name" {
-  value = aws_ecs_cluster.this.name
+  description = "Nombre del cluster de ECS del ambiente (tero-<ambiente>)."
+  value       = aws_ecs_cluster.this.name
 }
 
 output "service_names" {
-  value = { for k, s in module.service : k => s.service_name }
+  description = "Nombre de cada servicio de ECS, por servicio. Sirve para ecs update-service y para las alarmas."
+  value       = { for k, s in module.service : k => s.service_name }
 }
 
 output "log_groups" {
@@ -22,7 +29,8 @@ output "log_groups" {
 }
 
 output "db_address" {
-  value = module.data.db_address
+  description = "Host de PostgreSQL en RDS, solo accesible desde los servicios que la usan."
+  value       = module.data.db_address
 }
 
 output "db_secret_arn" {
@@ -36,5 +44,6 @@ output "redis_secret_arn" {
 }
 
 output "admin_secret_arn" {
-  value = aws_secretsmanager_secret.admin.arn
+  description = "Secreto de Secrets Manager con la contraseña del panel de admin y la clave de los JWT."
+  value       = aws_secretsmanager_secret.admin.arn
 }

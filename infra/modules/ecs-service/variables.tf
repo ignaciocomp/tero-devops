@@ -14,8 +14,9 @@ variable "image" {
 }
 
 variable "container_port" {
-  type    = number
-  default = 8080
+  description = "Puerto en el que escucha el contenedor. Los seis servicios usan 8080."
+  type        = number
+  default     = 8080
 }
 
 variable "cpu" {
@@ -29,7 +30,8 @@ variable "memory" {
 }
 
 variable "desired_count" {
-  type = number
+  description = "Cantidad de tareas que ECS mantiene corriendo."
+  type        = number
 }
 
 variable "environment" {
@@ -45,7 +47,8 @@ variable "secrets" {
 }
 
 variable "cluster_arn" {
-  type = string
+  description = "Cluster de ECS donde corre el servicio."
+  type        = string
 }
 
 variable "service_connect_namespace_arn" {
@@ -55,15 +58,18 @@ variable "service_connect_namespace_arn" {
 }
 
 variable "subnet_ids" {
-  type = list(string)
+  description = "Subredes de las tareas."
+  type        = list(string)
 }
 
 variable "security_group_ids" {
-  type = list(string)
+  description = "Security groups de las tareas."
+  type        = list(string)
 }
 
 variable "assign_public_ip" {
-  type = bool
+  description = "Si las tareas reciben IP pública (hace falta sin NAT, para bajar imágenes de GHCR)."
+  type        = bool
 }
 
 variable "execution_role_arn" {
@@ -84,15 +90,18 @@ variable "target_group_arn" {
 }
 
 variable "log_group_name" {
-  type = string
+  description = "Grupo de CloudWatch Logs del servicio, por ejemplo /tero/dev/catalog."
+  type        = string
 }
 
 variable "log_retention_days" {
-  type = number
+  description = "Días que CloudWatch Logs guarda los logs del servicio."
+  type        = number
 }
 
 variable "region" {
-  type = string
+  description = "Región del grupo de logs, para el driver awslogs."
+  type        = string
 }
 
 variable "redeploy_triggers" {
