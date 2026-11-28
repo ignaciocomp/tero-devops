@@ -65,6 +65,10 @@ resource "aws_ecs_service" "this" {
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
 
+  # El apply espera a que termine el despliegue, y falla si el circuit breaker vuelve atrás. Así el
+  # CD no da por desplegado un SHA que no arrancó, y la prueba de humo no le pega a tareas viejas.
+  wait_for_steady_state = true
+
   # Si las tareas nuevas no llegan a estables, ECS frena el despliegue y vuelve a la task
   # definition anterior.
   deployment_circuit_breaker {
