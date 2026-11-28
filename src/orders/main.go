@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -147,20 +149,29 @@ func listOrders(c *gin.Context) {
 
 // buildDSN arma la conexión a PostgreSQL como URL. net/url escapa el usuario y la contraseña:
 // la clave que genera RDS lleva puntuación, y en el formato "clave=valor" sin comillas un
-// espacio o una comilla rompían la conexión. sslmode es configurable, con require por
-// defecto: RDS con PostgreSQL 16 rechaza las conexiones sin TLS.
+// espacio o una comilla rompían la conexión.
 func buildDSN() string {
+	// sslmode: los mismos tres valores que en los otros servicios con base, con require por
+	// defecto (también con la variable vacía), porque RDS con PostgreSQL 16 rechaza las
+	// conexiones sin TLS. prefer y allow no se aceptan, porque pueden caer a texto plano.
+	sslMode := getEnv("RETAIL_ORDERS_PERSISTENCE_SSLMODE", "require")
+	if sslMode != "disable" && sslMode != "require" && sslMode != "verify-full" {
+		fatal("unsupported RETAIL_ORDERS_PERSISTENCE_SSLMODE",
+			fmt.Errorf("%q: use disable, require or verify-full", sslMode))
+	}
 	endpoint := getEnv("RETAIL_ORDERS_PERSISTENCE_ENDPOINT", "localhost:5432")
 	host, port, err := net.SplitHostPort(endpoint)
-	if err != nil { // el endpoint vino sin puerto
-		host, port = endpoint, ""
+	if err != nil { // el endpoint vino sin puerto (los corchetes de un IPv6 los vuelve a poner JoinHostPort)
+		host, port = strings.TrimSuffix(strings.TrimPrefix(endpoint, "["), "]"), ""
 	}
 	if port == "" {
 		port = "5432"
 	}
 	query := url.Values{}
-	query.Set("sslmode", getEnv("RETAIL_ORDERS_PERSISTENCE_SSLMODE", "require"))
+	query.Set("sslmode", sslMode)
 	query.Set("connect_timeout", "5")
+	// Para ver en pg_stat_activity qué servicio tiene cada conexión.
+	query.Set("application_name", "orders")
 	dsn := url.URL{
 		Scheme: "postgres",
 		User: url.UserPassword(
