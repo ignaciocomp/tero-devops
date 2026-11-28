@@ -167,3 +167,49 @@ variable "container_insights" {
     error_message = "container_insights tiene que ser enabled o disabled."
   }
 }
+
+# ── Alarmas ──
+
+variable "alarm_emails" {
+  description = "Mails que reciben los avisos de las alarmas. No se versionan: van en -var o en TF_VAR_alarm_emails. Cada mail tiene que confirmar la suscripción desde el aviso de AWS."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for e in var.alarm_emails : can(regex("^[^@ ]+@[^@ ]+[.][^@ ]+$", e))])
+    error_message = "alarm_emails tiene que tener direcciones de mail válidas."
+  }
+}
+
+variable "alarm_5xx_percent" {
+  description = "Porcentaje de requests a la tienda que terminan en 5xx a partir del cual se dispara la alarma alb-5xx."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.alarm_5xx_percent > 0 && var.alarm_5xx_percent < 100
+    error_message = "alarm_5xx_percent tiene que estar entre 0 y 100."
+  }
+}
+
+variable "alarm_min_requests" {
+  description = "Requests por minuto que hacen falta para que la alarma alb-5xx evalúe el porcentaje. Con menos, un solo error sería el 100 %."
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.alarm_min_requests >= 1
+    error_message = "alarm_min_requests tiene que ser al menos 1."
+  }
+}
+
+variable "alarm_memory_percent" {
+  description = "Porcentaje de la memoria reservada de un servicio a partir del cual se dispara su alarma de memoria. Al 100 %, ECS mata la tarea."
+  type        = number
+  default     = 85
+
+  validation {
+    condition     = var.alarm_memory_percent > 0 && var.alarm_memory_percent < 100
+    error_message = "alarm_memory_percent tiene que estar entre 0 y 100."
+  }
+}
