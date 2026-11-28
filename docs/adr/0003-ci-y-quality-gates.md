@@ -184,6 +184,7 @@ CVE-AAAA-NNNNN exp:2027-01-31
 
 **Hallazgo de Semgrep:**
 - Falso positivo: `nosemgrep: <id-de-la-regla>` en esa línea, con un comentario que explique por qué. Nunca un `nosemgrep` sin regla, que apaga todas.
+- Riesgo aceptado: un hallazgo real que responde a una decisión escrita en un ADR, con sus alternativas y la mejora prevista. Va con `nosemgrep: <id-de-la-regla>` en esa línea o en la anterior, más un comentario que nombre el ADR. Además se lista en la tabla de riesgos aceptados del [informe de análisis estático](../informes/analisis-estatico.md), con una fecha de revisión. Sin ADR no es un riesgo aceptado: se corrige o entra por el umbral. (Agregado el 2026-11-27, con el primer caso: el TLS sin verificar el certificado de admin, [ADR 0004](0004-tls-y-credenciales-hacia-los-datos.md).)
 - WARNING real que no se corrige ahora: entra en el umbral solo si el umbral ya lo cubre. **El umbral no se sube**; se baja cuando se corrigen hallazgos.
 
 ## Evidencia
