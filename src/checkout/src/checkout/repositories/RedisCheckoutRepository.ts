@@ -15,7 +15,8 @@ export class RedisCheckoutRepository
   constructor(
     private url: string,
     private readerUrl: string,
-    // Vacía: sin contraseña, o la que traiga la URL. Si la URL trae una, gana la de la URL.
+    // Vacía: sin contraseña. Si la URL trae usuario o contraseña, ioredis usa lo de la URL y
+    // esta se ignora.
     private password = '',
   ) {}
 

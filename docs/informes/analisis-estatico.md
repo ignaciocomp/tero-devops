@@ -2,7 +2,7 @@
 
 - **Fecha:** 2026-11-22
 - **Herramienta:** Semgrep 1.186.0, en el job `sast` del pipeline (ver el [ADR 0003](../adr/0003-ci-y-quality-gates.md)).
-- **Reglas:** packs del registry `p/default`, `p/golang`, `p/python`, `p/javascript`, `p/typescript`, `p/nodejs` y `p/dockerfile`.
+- **Reglas:** packs del registry `p/default`, `p/golang`, `p/python`, `p/javascript`, `p/typescript`, `p/nodejs` y `p/dockerfile`. Desde el PR del #18 (2026-11-27), también las reglas propias de [`.semgrep/`](../../.semgrep/tero.yml).
 - **Alcance:** los archivos versionados del repo (96 al 2026-11-22): código de los seis servicios, Dockerfiles, HTML y configuración.
 
 ## Umbrales (quality gate)
@@ -48,7 +48,7 @@ Por eso el gate actual sirve para evitar regresiones, pero no alcanza como medid
 
 1. **Medir mantenibilidad con SonarQube Cloud** (issue #20), con su propio quality gate: 0 bugs y vulnerabilidades nuevas, duplicación menor a 3 % y un tope de code smells. Es gratis para repos públicos.
 2. **Sumar linters por lenguaje al CI:** ESLint en ui, admin y checkout; `golangci-lint` en catalog y orders; `ruff` en carts. Detectan errores comunes que Semgrep no busca.
-3. **Escribir reglas propias de Semgrep para lo que encontró la revisión manual**, por ejemplo un `sslmode=disable` literal o un `fmt.Sprintf` que arme un DSN con la contraseña. Así, si vuelven, el gate los frena.
+3. **Escribir reglas propias de Semgrep para lo que encontró la revisión manual**, por ejemplo un `sslmode=disable` literal o un `fmt.Sprintf` que arme un DSN con la contraseña. Así, si vuelven, el gate los frena. **Hecho en el PR del #18:** [`.semgrep/tero.yml`](../../.semgrep/tero.yml) tiene esas dos reglas, como ERROR. Sobre `main` antes del cambio encuentran los cuatro casos (catalog y orders), y sobre el código corregido, ninguno.
 4. **Fijar la versión de las reglas.** Hoy los packs se bajan del registry en cada corrida, así que el resultado puede cambiar sin cambios en el código. Exportarlas a un archivo versionado hace el gate repetible.
 5. **Reordenar los `RUN` de los Dockerfiles**, o sumar `hadolint`, para que el análisis de Dockerfiles sea completo.
 6. **Configurar `npmMinimalAgeGate` en Yarn** después de confirmar que la versión vendorizada (4.11) lo soporta y que no frena las instalaciones con `--immutable`. Con eso se resuelve el último hallazgo y el umbral baja a 0.

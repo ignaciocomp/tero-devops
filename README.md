@@ -54,7 +54,7 @@ Para consultar la base o Redis no hace falta publicarlos. psql entra por el sock
 
 ```bash
 docker compose exec db psql -U retail_user -d orders
-docker compose exec redis sh -c 'REDISCLI_AUTH="$(sed -n "s/^requirepass //p" /usr/local/etc/redis/redis.conf)" redis-cli'
+docker compose exec redis sh -c 'REDISCLI_AUTH="$(sed -n "s/^requirepass .\(.*\).$/\1/p" /usr/local/etc/redis/redis.conf)" redis-cli'
 ```
 
 Si se necesita un cliente gráfico, crear en la raíz del repo un `docker-compose.override.yml` (no se versiona) que publique la base solo en `127.0.0.1` y aplicarlo con `docker compose up -d`. El cliente se tiene que conectar con TLS (`sslmode=require`), porque la base rechaza las conexiones por la red sin TLS. Al terminar, borrarlo y volver a correr `docker compose up -d` para que la base deje de publicarse. Mientras `db` esté publicada, la prueba de humo marca como falla la prueba de red de `db`.
@@ -73,13 +73,13 @@ services:
 El stack local se comporta como la nube, así lo que se prueba acá y en el CI es lo que va a pasar en AWS. Las decisiones y las alternativas están en el [ADR 0004](docs/adr/0004-tls-y-credenciales-hacia-los-datos.md).
 
 - **La base exige TLS**, como RDS con PostgreSQL 16 (`rds.force_ssl=1`). PostgreSQL arranca con `ssl=on` y el certificado de prueba (*snakeoil*) que trae la imagen, y [`pg_hba.conf`](pg_hba.conf) rechaza las conexiones por la red que no usan TLS.
-- **catalog, carts, orders y admin se conectan con TLS.** Cada uno tiene su variable de `sslmode` (ver [Variables de entorno](#variables-de-entorno)), con los valores de libpq y `require` por defecto: la conexión va cifrada, pero no se verifica el certificado del servidor.
-- **Redis pide contraseña** (`REDIS_PASSWORD`), como un ElastiCache con AUTH. checkout la recibe aparte de la URL, en `RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD`. Con `rediss://` en la URL, checkout se conecta con TLS, que ElastiCache exige para usar AUTH.
-- **Las contraseñas pueden tener cualquier carácter.** catalog y orders arman la conexión a PostgreSQL como URL, con el usuario y la contraseña escapados. Las claves que genera RDS llevan puntuación.
-- **Si la base se reinicia** (un mantenimiento o un failover de RDS), los servicios se reconectan solos. catalog y orders descartan las conexiones cortadas del pool, admin también (y ya no se cae cuando la base corta una conexión inactiva), y carts reabre su conexión y repite la operación una vez.
+- **catalog, carts, orders y admin se conectan con TLS.** Cada uno tiene su variable de `sslmode` (ver [Variables de entorno](#variables-de-entorno)), que acepta `disable`, `require` (el valor por defecto) o `verify-full`. Con `require`, la conexión va cifrada, pero no se verifica el certificado del servidor. `verify-full` necesita el certificado de la CA de RDS en la imagen, que todavía no está: sin él, el servicio no se conecta. Con cualquier otro valor el servicio no arranca, incluidos `prefer` y `allow`, que pueden caer a texto plano.
+- **Redis pide contraseña** (`REDIS_PASSWORD`), como un ElastiCache con AUTH. checkout la recibe aparte de la URL, en `RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD`. Con `rediss://` en la URL, checkout se conecta con TLS, que ElastiCache exige para usar AUTH. En local Redis no tiene TLS, así que ese camino recién se prueba en la nube. Si se cambia `REDIS_PASSWORD` en el `.env`, `docker compose up -d` recrea checkout pero no redis, que se queda con la clave vieja: hay que correr también `docker compose up -d --force-recreate redis`.
+- **Las contraseñas de la base pueden tener cualquier carácter**, también `$`. catalog y orders arman la conexión a PostgreSQL como URL, con el usuario y la contraseña escapados, y catalog lee la contraseña tal cual del entorno. Las claves que genera RDS llevan puntuación.
+- **Si la base se cae o se reinicia** (un mantenimiento o un failover de RDS), los servicios responden con error mientras tanto, pero no se caen, y cuando vuelve se reconectan solos. catalog y orders descartan las conexiones cortadas del pool. admin también, y responde 500 si una consulta falla. carts reabre su conexión y repite la operación una vez, con a lo sumo un intento de reconexión cada 2 s mientras la base no está. Cada servicio se identifica en la base con `application_name`, así en `pg_stat_activity` se ve de quién es cada conexión. Una salvedad para la nube: la clave que maneja RDS rota cada 7 días y ECS no se la actualiza a las tareas que ya corren, así que después de una rotación las conexiones nuevas fallan hasta un despliegue nuevo. Se resuelve en la infraestructura (ver el ADR 0004).
 - **`/topology`** de catalog y checkout devuelve solo el tipo de persistencia, sin el endpoint de la base ni la URL de Redis.
 
-La prueba de humo comprueba cada punto. Intenta una conexión sin TLS, mira en `pg_stat_ssl` que las conexiones de los servicios estén cifradas, le pide a Redis un comando sin contraseña y consulta `/topology`. Al final reinicia `db` y comprueba que los cuatro servicios con base responden al primer intento.
+La prueba de humo, que corre en el CI en cada PR, comprueba casi todo esto. Intenta una conexión sin TLS, mira en `pg_stat_ssl` que estén cifradas las conexiones de los cuatro servicios (que en compose usan el `sslmode` por defecto, como en la nube), le pide a Redis un comando sin contraseña y consulta `/topology`. Después frena `db`: mientras está caída, carts y admin tienen que responder 500 sin caerse. Cuando vuelve, los cuatro servicios con base tienen que responder al primer intento, y ninguno se tiene que haber reiniciado. En el CI, además, la contraseña de la base lleva espacio, comillas y signos, así se prueba el escape. Lo que no cubre: `rediss://` y `verify-full`.
 
 ## Comandos útiles
 
@@ -97,7 +97,7 @@ docker compose up --build <servicio>
 docker compose logs -f <servicio>
 
 # Prueba de humo: recorre los seis servicios (con el stack levantado y el .env completo).
-# En el medio reinicia db, para probar que los servicios se reconectan solos.
+# En el medio frena y vuelve a levantar db, para probar que los servicios se reconectan solos.
 bash scripts/smoke-test.sh
 ```
 
@@ -135,7 +135,7 @@ Cada PR y cada push a `main` corren el workflow [`.github/workflows/ci.yml`](.gi
 | Gate | Herramienta | Frena el pipeline si |
 |---|---|---|
 | Secretos | Gitleaks sobre todo el historial, con las reglas de `.gitleaks.toml` | encuentra un secreto que no esté en `.gitleaksignore` |
-| SAST y calidad | Semgrep | hay un hallazgo ERROR, o más WARNING/MEDIUM que el umbral |
+| SAST y calidad | Semgrep, con los packs del registry y las reglas propias de `.semgrep/` | hay un hallazgo ERROR, o más WARNING/MEDIUM que el umbral |
 | Dependencias | Trivy sobre el repo | hay una vulnerabilidad CRITICAL o HIGH con parche disponible |
 | Imágenes | Trivy sobre cada una de las seis imágenes, antes de publicarlas | lo mismo, para paquetes del sistema y de cada lenguaje |
 | Prueba de humo | `scripts/smoke-test.sh` con el stack levantado con esas mismas imágenes | falla alguna prueba |
@@ -265,7 +265,7 @@ Las contraseñas y el secreto JWT no tienen valor por defecto: se definen en `.e
 | `RETAIL_CATALOG_PERSISTENCE_PASSWORD`  | Contraseña PostgreSQL | *(obligatoria)*  |
 | `RETAIL_ORDERS_PERSISTENCE_PASSWORD`   | Contraseña PostgreSQL | *(obligatoria)*  |
 | `CART_POSTGRES_PASSWORD`               | Contraseña PostgreSQL | *(obligatoria)*  |
-| `RETAIL_CATALOG_PERSISTENCE_SSLMODE`   | TLS hacia la base (`sslmode` de libpq: `disable`, `require`, `verify-full`...) | `require` |
+| `RETAIL_CATALOG_PERSISTENCE_SSLMODE`   | TLS hacia la base: `disable`, `require` o `verify-full` (con otro valor, el servicio no arranca) | `require` |
 | `RETAIL_ORDERS_PERSISTENCE_SSLMODE`    | Lo mismo, para orders | `require`        |
 | `CART_POSTGRES_SSLMODE`                | Lo mismo, para carts  | `require`        |
 
@@ -274,7 +274,7 @@ Las contraseñas y el secreto JWT no tienen valor por defecto: se definen en `.e
 |--------------------------------------------|--------------------------|------------------------|
 | `RETAIL_CHECKOUT_PERSISTENCE_PROVIDER`     | Tipo de persistencia     | `redis`               |
 | `RETAIL_CHECKOUT_PERSISTENCE_REDIS_URL`    | URL de Redis (`rediss://` para TLS) | `redis://redis:6379`  |
-| `RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD` | Contraseña de Redis (si la URL trae una, gana la de la URL) | *(vacía: sin contraseña)* |
+| `RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD` | Contraseña de Redis. Definirla solo si Redis tiene AUTH. Si la URL trae usuario o contraseña, se usa lo de la URL y esta variable se ignora | *(vacía: sin contraseña)* |
 | `RETAIL_CHECKOUT_ENDPOINTS_ORDERS`         | URL del servicio orders  | `http://orders:8080`  |
 
 ### Admin

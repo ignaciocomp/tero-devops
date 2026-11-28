@@ -36,7 +36,7 @@ resumen: corre siempre al final, con el resultado de los cinco
 | Gate | Herramienta | Qué analiza | Corta el build si | Excepciones |
 |---|---|---|---|---|
 | Secretos | Gitleaks 8.30.1 | Todo el historial de git (`fetch-depth: 0`), con las reglas por defecto más las de `.gitleaks.toml` | Hay al menos un hallazgo | `.gitleaksignore`, por fingerprint |
-| SAST (seguridad) | Semgrep 1.186.0 | Código y Dockerfiles, packs `p/default`, `p/golang`, `p/python`, `p/javascript`, `p/typescript`, `p/nodejs` y `p/dockerfile` | Hay al menos un hallazgo ERROR, CRITICAL o HIGH | `nosemgrep: <regla>` en la línea, con justificación |
+| SAST (seguridad) | Semgrep 1.186.0 | Código y Dockerfiles, packs `p/default`, `p/golang`, `p/python`, `p/javascript`, `p/typescript`, `p/nodejs` y `p/dockerfile`, más las reglas propias de `.semgrep/` (desde el PR del #18) | Hay al menos un hallazgo ERROR, CRITICAL o HIGH | `nosemgrep: <regla>` en la línea, con justificación |
 | Análisis estático (calidad) | Semgrep 1.186.0 | Lo mismo | Los hallazgos WARNING o MEDIUM superan `SEMGREP_MAX_WARNINGS` (hoy 1, la línea base medida) | Se baja el umbral con un PR |
 | Dependencias (SCA) | Trivy 0.76.2 `fs` | `package-lock.json`, `yarn.lock`, `go.mod` y `requirements.txt` | Hay una vulnerabilidad CRITICAL o HIGH **con parche disponible** | `.trivyignore`, solo si tiene parche y no se puede aplicar todavía; con justificación y vencimiento |
 | Imágenes | Trivy 0.76.2 `image` | El tar de cada una de las seis imágenes: paquetes de Debian y dependencias de cada lenguaje | Igual que dependencias | `.trivyignore` |
