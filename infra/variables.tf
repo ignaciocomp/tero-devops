@@ -139,3 +139,13 @@ variable "admin_secret_version" {
     error_message = "admin_secret_version tiene que ser un entero mayor o igual a 1."
   }
 }
+
+variable "redis_password_version" {
+  description = "Versión de la contraseña de Redis. Al subirla, Terraform genera una clave nueva, la escribe en ElastiCache y en el secreto, y redespliega checkout."
+  type        = number
+
+  validation {
+    condition     = var.redis_password_version >= 1 && floor(var.redis_password_version) == var.redis_password_version
+    error_message = "redis_password_version tiene que ser un entero mayor o igual a 1."
+  }
+}

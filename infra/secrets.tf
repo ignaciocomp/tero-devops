@@ -2,6 +2,7 @@
 #
 # - db: usuario y contraseña de PostgreSQL. Los usan catalog, carts, orders y admin.
 # - admin: la contraseña del panel y la clave con la que firma los JWT.
+# - redis: la contraseña de Redis (AUTH), que usa checkout.
 #
 # Terraform los genera con valores efímeros y los escribe con atributos write-only
 # (secret_string_wo en el secreto, password_wo en RDS): pasan a AWS, pero no quedan ni en el plan
@@ -15,8 +16,14 @@
 # - db_password_version: clave nueva en RDS y en el secreto, y redespliegue de catalog, carts,
 #   orders y admin.
 # - admin_secret_version: clave del panel y de los JWT nuevas, y redespliegue de admin.
+# - redis_password_version: clave nueva en ElastiCache y en el secreto, y redespliegue de checkout.
 
 ephemeral "random_password" "db" {
+  length  = 32
+  special = false
+}
+
+ephemeral "random_password" "redis" {
   length  = 32
   special = false
 }
@@ -63,4 +70,17 @@ resource "aws_secretsmanager_secret_version" "admin" {
     jwt_secret = ephemeral.random_password.jwt.result
   })
   secret_string_wo_version = var.admin_secret_version
+}
+
+# nosemgrep: terraform.aws.security.aws-secretsmanager-secret-unencrypted.aws-secretsmanager-secret-unencrypted
+resource "aws_secretsmanager_secret" "redis" {
+  name                    = "${local.name}/redis"
+  description             = "Contraseña de Redis (AUTH) de ${local.name}"
+  recovery_window_in_days = var.secret_recovery_window_days
+}
+
+resource "aws_secretsmanager_secret_version" "redis" {
+  secret_id                = aws_secretsmanager_secret.redis.id
+  secret_string_wo         = jsonencode({ password = ephemeral.random_password.redis.result })
+  secret_string_wo_version = var.redis_password_version
 }

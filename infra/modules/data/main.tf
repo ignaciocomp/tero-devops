@@ -94,19 +94,28 @@ resource "aws_vpc_security_group_ingress_rule" "redis" {
 }
 
 # Un nodo, como el redis de compose: checkout guarda ahí el checkout en curso, que se puede perder
-# sin romper nada más que esa compra.
-resource "aws_elasticache_cluster" "this" {
-  cluster_id = var.name
+# sin romper nada más que esa compra. Con contraseña (AUTH) y TLS, como pide el ADR 0004: por eso
+# es un replication group, porque aws_elasticache_cluster no permite ni una cosa ni la otra. La
+# contraseña llega efímera y se escribe con auth_token_wo: no queda en el estado.
+resource "aws_elasticache_replication_group" "this" {
+  replication_group_id = var.name
+  description          = "Redis de checkout en ${var.name}"
 
-  engine               = "redis"
-  engine_version       = var.redis_engine_version
-  parameter_group_name = var.redis_parameter_group
-  node_type            = var.redis_node_type
-  num_cache_nodes      = 1
-  port                 = 6379
+  engine                     = "redis"
+  engine_version             = var.redis_engine_version
+  parameter_group_name       = var.redis_parameter_group
+  node_type                  = var.redis_node_type
+  num_cache_clusters         = 1
+  automatic_failover_enabled = false
+  port                       = 6379
 
   subnet_group_name  = aws_elasticache_subnet_group.this.name
   security_group_ids = [aws_security_group.redis.id]
+
+  at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
+  auth_token_wo              = var.redis_password
+  auth_token_wo_version      = var.redis_password_version
 
   apply_immediately = var.apply_immediately
 }

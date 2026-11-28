@@ -30,6 +30,11 @@ output "db_secret_arn" {
   value       = aws_secretsmanager_secret.db.arn
 }
 
+output "redis_secret_arn" {
+  description = "Secreto de Secrets Manager con la contraseña de Redis."
+  value       = aws_secretsmanager_secret.redis.arn
+}
+
 output "admin_secret_arn" {
   value = aws_secretsmanager_secret.admin.arn
 }

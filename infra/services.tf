@@ -47,10 +47,11 @@ locals {
     checkout = {
       environment = {
         RETAIL_CHECKOUT_PERSISTENCE_PROVIDER  = "redis"
-        RETAIL_CHECKOUT_PERSISTENCE_REDIS_URL = "redis://${module.data.redis_address}:${module.data.redis_port}"
+        RETAIL_CHECKOUT_PERSISTENCE_REDIS_URL = "rediss://${module.data.redis_address}:${module.data.redis_port}"
         RETAIL_CHECKOUT_ENDPOINTS_ORDERS      = local.endpoints["orders"]
       }
-      secrets = {}
+      # rediss:// es Redis con TLS. La contraseña va aparte, no en la URL (ver el ADR 0004).
+      secrets = { RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD = "${aws_secretsmanager_secret.redis.arn}:password::" }
     }
 
     ui = {
@@ -99,6 +100,7 @@ module "service" {
     for k, v in {
       db_password = contains(["catalog", "carts", "orders", "admin"], each.key) ? var.db_password_version : null
       admin       = each.key == "admin" ? var.admin_secret_version : null
+      redis       = each.key == "checkout" ? var.redis_password_version : null
     } : k => tostring(v) if v != null
   }
 
@@ -120,6 +122,7 @@ module "service" {
   depends_on = [
     aws_secretsmanager_secret_version.db,
     aws_secretsmanager_secret_version.admin,
+    aws_secretsmanager_secret_version.redis,
     aws_iam_role_policy.execution_secrets,
     aws_lb_listener.ui,
     aws_lb_listener.admin,

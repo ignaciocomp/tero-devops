@@ -31,6 +31,9 @@ module "data" {
   db_deletion_protection   = var.db_deletion_protection
   db_final_snapshot        = var.db_final_snapshot
   redis_node_type          = var.redis_node_type
+
+  redis_password         = ephemeral.random_password.redis.result
+  redis_password_version = var.redis_password_version
 }
 
 # ── ECS ───────────────────────────────────────────────────────────────────

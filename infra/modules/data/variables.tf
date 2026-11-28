@@ -94,6 +94,17 @@ variable "redis_parameter_group" {
   default     = "default.redis7"
 }
 
+variable "redis_password" {
+  description = "Contraseña de Redis (AUTH). Efímera: no queda en el estado."
+  type        = string
+  ephemeral   = true
+}
+
+variable "redis_password_version" {
+  description = "Versión de la contraseña de Redis: al subirla, ElastiCache recibe redis_password."
+  type        = number
+}
+
 variable "redis_node_type" {
   type = string
 }

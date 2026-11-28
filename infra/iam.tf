@@ -53,6 +53,7 @@ data "aws_iam_policy_document" "read_secrets" {
     resources = [
       aws_secretsmanager_secret.db.arn,
       aws_secretsmanager_secret.admin.arn,
+      aws_secretsmanager_secret.redis.arn,
     ]
   }
 }
