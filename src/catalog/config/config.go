@@ -14,4 +14,7 @@ type DatabaseConfiguration struct {
 	User           string `env:"RETAIL_CATALOG_PERSISTENCE_USER,default=catalog_user"`
 	Password       string `env:"RETAIL_CATALOG_PERSISTENCE_PASSWORD"`
 	ConnectTimeout int    `env:"RETAIL_CATALOG_PERSISTENCE_CONNECT_TIMEOUT,default=5"`
+	// TLS hacia la base, con los valores de libpq (disable, require, verify-full...). RDS con
+	// PostgreSQL 16 rechaza las conexiones sin TLS.
+	SSLMode string `env:"RETAIL_CATALOG_PERSISTENCE_SSLMODE,default=require"`
 }

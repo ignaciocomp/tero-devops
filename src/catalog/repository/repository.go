@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"retail-store/catalog/config"
@@ -27,14 +26,7 @@ type CatalogRepository interface {
 }
 
 func createPostgreSQLDatabase(config config.DatabaseConfiguration) (*gorm.DB, error) {
-	host := config.Endpoint
-	port := "5432"
-	if parts := strings.SplitN(config.Endpoint, ":", 2); len(parts) == 2 {
-		host = parts[0]
-		port = parts[1]
-	}
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable connect_timeout=%d",
-		host, port, config.User, config.Password, config.Name, config.ConnectTimeout)
+	dsn := postgresDSN(config)
 
 	var db *gorm.DB
 	var err error
