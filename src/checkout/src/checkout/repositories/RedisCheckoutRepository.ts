@@ -15,10 +15,14 @@ export class RedisCheckoutRepository
   constructor(
     private url: string,
     private readerUrl: string,
+    // Vacía: sin contraseña. Si la URL trae usuario o contraseña, ioredis usa lo de la URL y
+    // esta se ignora.
+    private password = '',
   ) {}
 
   private async buildClient(url: string) {
-    const client = new Redis(url);
+    // Con rediss:// en la URL, ioredis se conecta con TLS.
+    const client = new Redis(url, this.password ? { password: this.password } : {});
     // Sin este listener, ioredis escribe los errores de conexión en texto por consola.
     // Igual sigue reintentando la conexión.
     client.on('error', (error) => {

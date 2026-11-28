@@ -92,6 +92,7 @@ jobs:
             "$SEMGREP_IMAGE" semgrep scan --metrics=off \
             --config p/default --config p/golang --config p/python \
             --config p/javascript --config p/typescript --config p/nodejs --config p/dockerfile \
+            --config .semgrep/ \
             --json --output /out/semgrep.json
 
       - name: Subir el reporte de Semgrep
@@ -296,16 +297,23 @@ jobs:
       - name: Generar un .env efímero
         run: |
           # Valores nuevos en cada corrida, ocultos en los logs con add-mask antes de usarlos.
-          # Solo hexadecimales, como pide .env.example.
+          # Hexadecimales, como pide .env.example. La contraseña de la base lleva además un
+          # espacio, comillas y signos, así la prueba de humo prueba el escape en los cuatro
+          # servicios con base. Va entre comillas simples en el .env, que compose toma tal cual.
+          # No lleva ' (cerraría las comillas), % (add-mask lo lee como un escape) ni $ (docker
+          # compose config lo duplica, y la prueba de secretos en los logs no lo encontraría).
           umask 077
-          postgres_password="$(openssl rand -hex 32)"
+          postgres_password="$(openssl rand -hex 32)"' :@/?#&=+;"\x'
+          redis_password="$(openssl rand -hex 32)"
           admin_password="$(openssl rand -hex 32)"
           admin_jwt_secret="$(openssl rand -hex 32)"
           echo "::add-mask::$postgres_password"
+          echo "::add-mask::$redis_password"
           echo "::add-mask::$admin_password"
           echo "::add-mask::$admin_jwt_secret"
           {
-            echo "POSTGRES_PASSWORD=$postgres_password"
+            printf "POSTGRES_PASSWORD='%s'\n" "$postgres_password"
+            echo "REDIS_PASSWORD=$redis_password"
             echo "ADMIN_USERNAME=admin"
             echo "ADMIN_PASSWORD=$admin_password"
             echo "ADMIN_JWT_SECRET=$admin_jwt_secret"

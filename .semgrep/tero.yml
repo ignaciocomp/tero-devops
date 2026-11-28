@@ -1,0 +1,26 @@
+# Reglas propias de Semgrep para Tero. Atrapan dos problemas que encontró la revisión manual y
+# que corrigió el PR del #18, para que no vuelvan (recomendación 3 del informe de análisis
+# estático). Son ERROR: cuentan para el gate de seguridad del CI.
+rules:
+  - id: tero-sslmode-disable-fijo
+    languages: [go]
+    severity: ERROR
+    message: >-
+      sslmode=disable fijo en la conexión a PostgreSQL: RDS con PostgreSQL 16 rechaza las
+      conexiones sin TLS. El modo tiene que salir de la configuración, con require por defecto
+      (ADR 0004).
+    pattern-regex: sslmode=disable
+
+  - id: tero-dsn-con-sprintf
+    languages: [go]
+    severity: ERROR
+    message: >-
+      Conexión a PostgreSQL armada con fmt.Sprintf: la contraseña no se escapa, y una clave con
+      espacios o comillas, como las que genera RDS, la rompe. Armarla como URL con net/url
+      (ADR 0004).
+    patterns:
+      - pattern: fmt.Sprintf($FMT, ...)
+      # metavariable-regex se ancla al principio del valor: de ahí el ".*"
+      - metavariable-regex:
+          metavariable: $FMT
+          regex: (?i).*password=

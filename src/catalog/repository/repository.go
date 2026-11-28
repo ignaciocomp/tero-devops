@@ -4,15 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
-	"retail-store/catalog/config"
-	"retail-store/catalog/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
+	"retail-store/catalog/config"
+	"retail-store/catalog/model"
 )
 
 type Database struct {
@@ -27,14 +26,11 @@ type CatalogRepository interface {
 }
 
 func createPostgreSQLDatabase(config config.DatabaseConfiguration) (*gorm.DB, error) {
-	host := config.Endpoint
-	port := "5432"
-	if parts := strings.SplitN(config.Endpoint, ":", 2); len(parts) == 2 {
-		host = parts[0]
-		port = parts[1]
+	// Un sslmode inválido corta acá, sin los reintentos de abajo.
+	dsn, dsnErr := postgresDSN(config)
+	if dsnErr != nil {
+		return nil, dsnErr
 	}
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable connect_timeout=%d",
-		host, port, config.User, config.Password, config.Name, config.ConnectTimeout)
 
 	var db *gorm.DB
 	var err error

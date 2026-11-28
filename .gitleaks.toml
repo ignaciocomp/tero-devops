@@ -23,6 +23,18 @@ secretGroup = 1
 keywords = ["password", "secret"]
 tags = ["password", "low-entropy", "tero"]
 
+# (a2) Contraseña literal en la configuración de Redis (requirepass o masterauth) dentro de
+#      docker-compose*.yml (por ejemplo, en un configs con content) o en un redis*.conf. En
+#      Redis la clave va separada por un espacio, no por ":" ni "=", así que la (a) no la ve.
+[[rules]]
+id = "tero-redis-literal-password"
+description = "Contraseña literal de Redis (requirepass o masterauth) en compose o en un redis.conf"
+path = '''(^|/)(docker-compose[^/]*\.ya?ml|compose[^/]*\.ya?ml|redis[^/]*\.conf)$'''
+regex = '''(?im)^[ \t]*(?:requirepass|masterauth)[ \t]+["']?([^\s"'$#][^\s"'#]*)'''
+secretGroup = 1
+keywords = ["requirepass", "masterauth"]
+tags = ["password", "low-entropy", "tero"]
+
 # (b) Valor por defecto literal para una contraseña o secreto en TypeScript/JavaScript:
 #     process.env.ADMIN_PASSWORD || 'admin'   /   process.env.X_SECRET ?? "valor"
 [[rules]]
