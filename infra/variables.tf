@@ -113,3 +113,9 @@ variable "secret_recovery_window_days" {
   description = "Días que Secrets Manager guarda un secreto borrado antes de eliminarlo. Con 0 se borra en el momento, y se puede volver a crear con el mismo nombre (útil en dev y test)."
   type        = number
 }
+
+variable "service_connect" {
+  description = "true: los servicios se llaman por nombre con Service Connect (pide Cloud Map, que el Learner Lab deniega). false: se llaman a través de un ALB interno."
+  type        = bool
+  default     = false
+}

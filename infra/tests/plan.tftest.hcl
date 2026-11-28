@@ -87,6 +87,48 @@ run "learner_lab_usa_el_labrole" {
   }
 }
 
+run "en_el_lab_los_servicios_se_llaman_por_el_alb_interno" {
+  command = plan
+
+  assert {
+    condition     = length(aws_service_discovery_http_namespace.this) == 0
+    error_message = "Sin service_connect no se puede crear el namespace de Cloud Map: el Learner Lab lo deniega."
+  }
+
+  assert {
+    condition     = length(aws_lb.internal) == 1 && aws_lb.internal[0].internal
+    error_message = "Sin service_connect tiene que haber un ALB interno."
+  }
+
+  assert {
+    condition     = toset(keys(aws_lb_listener.internal)) == toset(["catalog", "carts", "orders", "checkout"])
+    error_message = "El ALB interno necesita un listener por cada servicio que llama otro: catalog, carts, orders y checkout."
+  }
+
+  assert {
+    condition     = length(distinct([for l in aws_lb_listener.internal : l.port])) == 4
+    error_message = "Cada listener del ALB interno tiene que tener su propio puerto."
+  }
+}
+
+run "con_service_connect_no_hay_alb_interno" {
+  command = plan
+
+  variables {
+    service_connect = true
+  }
+
+  assert {
+    condition     = length(aws_service_discovery_http_namespace.this) == 1 && length(aws_lb.internal) == 0
+    error_message = "Con service_connect, los servicios se llaman por nombre y no hace falta el ALB interno."
+  }
+
+  assert {
+    condition     = local.endpoints["orders"] == "http://orders:8080"
+    error_message = "Con service_connect, las URL son las mismas que en compose."
+  }
+}
+
 run "cuenta_propia_crea_los_roles" {
   command = plan
 

@@ -32,7 +32,11 @@ module "data" {
 
 # ── ECS ───────────────────────────────────────────────────────────────────
 
+# Service Connect solo con service_connect = true (cuenta propia): en el Learner Lab, Cloud Map
+# está denegado y los servicios se llaman a través del ALB interno (alb.tf).
 resource "aws_service_discovery_http_namespace" "this" {
+  count = var.service_connect ? 1 : 0
+
   name        = local.name
   description = "Service Connect de ${local.name}: cada servicio se llama por su nombre, como en compose"
 }
@@ -46,18 +50,22 @@ resource "aws_ecs_cluster" "this" {
     value = "enabled"
   }
 
-  service_connect_defaults {
-    namespace = aws_service_discovery_http_namespace.this.arn
+  dynamic "service_connect_defaults" {
+    for_each = aws_service_discovery_http_namespace.this
+
+    content {
+      namespace = service_connect_defaults.value.arn
+    }
   }
 }
 
 # ── Security group de los servicios ───────────────────────────────────────
 
-# Los seis servicios comparten un security group: aceptan el 8080 del ALB y de los otros servicios
-# (Service Connect), y nada más.
+# Los seis servicios comparten un security group: aceptan el 8080 del ALB público y del interno
+# (o, con Service Connect, de los otros servicios), y nada más.
 resource "aws_security_group" "app" {
   name        = "${local.name}-app"
-  description = "Servicios de ${local.name}: el 8080, solo desde el ALB y entre ellos"
+  description = "Servicios de ${local.name}: el 8080, solo desde los ALB y entre ellos"
   vpc_id      = module.network.vpc_id
 
   tags = { Name = "${local.name}-app" }
@@ -69,10 +77,23 @@ resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
   ip_protocol                  = "tcp"
   from_port                    = 8080
   to_port                      = 8080
-  description                  = "Desde el ALB"
+  description                  = "Desde el ALB publico"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "app_from_internal_alb" {
+  count = var.service_connect ? 0 : 1
+
+  security_group_id            = aws_security_group.app.id
+  referenced_security_group_id = aws_security_group.internal_alb[0].id
+  ip_protocol                  = "tcp"
+  from_port                    = 8080
+  to_port                      = 8080
+  description                  = "Desde el ALB interno"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "app_from_app" {
+  count = var.service_connect ? 1 : 0
+
   security_group_id            = aws_security_group.app.id
   referenced_security_group_id = aws_security_group.app.id
   ip_protocol                  = "tcp"

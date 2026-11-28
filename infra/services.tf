@@ -1,6 +1,7 @@
 # Los seis servicios, con las mismas variables de entorno que docker-compose.yml. Cambian los
 # hosts (RDS y ElastiCache en lugar de db y redis) y los secretos, que ECS lee de Secrets Manager
-# al arrancar cada tarea. Los servicios se llaman entre ellos por nombre, con Service Connect.
+# al arrancar cada tarea. Los servicios se llaman entre ellos por el ALB interno o, con
+# service_connect, por nombre (ver alb.tf).
 
 locals {
   db_endpoint = "${module.data.db_address}:${module.data.db_port}"
@@ -47,17 +48,17 @@ locals {
       environment = {
         RETAIL_CHECKOUT_PERSISTENCE_PROVIDER  = "redis"
         RETAIL_CHECKOUT_PERSISTENCE_REDIS_URL = "redis://${module.data.redis_address}:${module.data.redis_port}"
-        RETAIL_CHECKOUT_ENDPOINTS_ORDERS      = "http://orders:8080"
+        RETAIL_CHECKOUT_ENDPOINTS_ORDERS      = local.endpoints["orders"]
       }
       secrets = {}
     }
 
     ui = {
       environment = {
-        RETAIL_UI_ENDPOINTS_CATALOG  = "http://catalog:8080"
-        RETAIL_UI_ENDPOINTS_CARTS    = "http://carts:8080"
-        RETAIL_UI_ENDPOINTS_CHECKOUT = "http://checkout:8080"
-        RETAIL_UI_ENDPOINTS_ORDERS   = "http://orders:8080"
+        RETAIL_UI_ENDPOINTS_CATALOG  = local.endpoints["catalog"]
+        RETAIL_UI_ENDPOINTS_CARTS    = local.endpoints["carts"]
+        RETAIL_UI_ENDPOINTS_CHECKOUT = local.endpoints["checkout"]
+        RETAIL_UI_ENDPOINTS_ORDERS   = local.endpoints["orders"]
       }
       secrets = {}
     }
@@ -94,24 +95,25 @@ module "service" {
   secrets     = each.value.secrets
 
   cluster_arn                   = aws_ecs_cluster.this.arn
-  service_connect_namespace_arn = aws_service_discovery_http_namespace.this.arn
+  service_connect_namespace_arn = try(aws_service_discovery_http_namespace.this[0].arn, null)
   subnet_ids                    = module.network.app_subnet_ids
   assign_public_ip              = module.network.app_assign_public_ip
   security_group_ids            = [aws_security_group.app.id]
   execution_role_arn            = local.execution_role_arn
   task_role_arn                 = local.task_role_arn
-  target_group_arn              = try(aws_lb_target_group.this[each.key].arn, null)
+  target_group_arn              = try(aws_lb_target_group.this[each.key].arn, aws_lb_target_group.internal[each.key].arn, null)
 
   log_group_name     = "/tero/${var.environment}/${each.key}"
   log_retention_days = var.log_retention_days
   region             = var.region
 
-  # El secreto de admin tiene que tener valor, y los listeners tienen que existir, antes de que
-  # ECS arranque tareas o registre targets.
+  # El secreto de admin tiene que tener valor, y los listeners (públicos e internos) tienen que
+  # existir, antes de que ECS arranque tareas o registre targets.
   depends_on = [
     aws_secretsmanager_secret_version.admin,
     aws_iam_role_policy.execution_secrets,
     aws_lb_listener.ui,
     aws_lb_listener.admin,
+    aws_lb_listener.internal,
   ]
 }

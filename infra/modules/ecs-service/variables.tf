@@ -49,7 +49,9 @@ variable "cluster_arn" {
 }
 
 variable "service_connect_namespace_arn" {
-  type = string
+  description = "Namespace de Cloud Map para Service Connect, o null para no usarlo (en el Learner Lab, Cloud Map está denegado)."
+  type        = string
+  default     = null
 }
 
 variable "subnet_ids" {
@@ -76,7 +78,7 @@ variable "task_role_arn" {
 }
 
 variable "target_group_arn" {
-  description = "Target group del ALB, solo para ui y admin."
+  description = "Target group del ALB público (ui y admin) o del interno (catalog, carts, orders y checkout), o null."
   type        = string
   default     = null
 }

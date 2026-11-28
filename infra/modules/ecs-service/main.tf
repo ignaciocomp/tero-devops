@@ -1,7 +1,7 @@
 # Un servicio de Tero en ECS Fargate: su grupo de logs, la task definition y el servicio.
-# Se registra en Service Connect con su nombre (catalog, carts...), así los demás lo llaman con la
-# misma URL que en compose (http://catalog:8080). Si recibe target_group_arn, además queda detrás
-# del ALB.
+# Con target_group_arn queda detrás de un ALB (el público o el interno). Con
+# service_connect_namespace_arn se registra además en Service Connect con su nombre (catalog,
+# carts...), para que los demás lo llamen como en compose (http://catalog:8080).
 
 # CloudWatch Logs ya cifra los logs con una clave de AWS. Una clave propia de KMS (CMK) suma
 # costo y permisos, y no cambia lo que se protege: los logs no llevan secretos ni datos personales.
@@ -83,17 +83,21 @@ resource "aws_ecs_service" "this" {
     assign_public_ip = var.assign_public_ip
   }
 
-  service_connect_configuration {
-    enabled   = true
-    namespace = var.service_connect_namespace_arn
+  dynamic "service_connect_configuration" {
+    for_each = var.service_connect_namespace_arn == null ? [] : [var.service_connect_namespace_arn]
 
-    service {
-      port_name      = "http"
-      discovery_name = var.name
+    content {
+      enabled   = true
+      namespace = service_connect_configuration.value
 
-      client_alias {
-        port     = var.container_port
-        dns_name = var.name
+      service {
+        port_name      = "http"
+        discovery_name = var.name
+
+        client_alias {
+          port     = var.container_port
+          dns_name = var.name
+        }
       }
     }
   }
