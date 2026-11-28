@@ -108,17 +108,10 @@ func main() {
 		c.String(http.StatusOK, "OK")
 	})
 
+	// Solo el tipo de persistencia. El endpoint de la base es un detalle de la infraestructura
+	// que no hace falta exponer (informe de seguridad, docs/informes/seguridad.md).
 	r.GET("/topology", func(c *gin.Context) {
-		topology := make(map[string]string)
-
-		topology["persistenceProvider"] = config.Database.Type
-		topology["databaseEndpoint"] = "N/A"
-
-		if config.Database.Type != "in-memory" {
-			topology["databaseEndpoint"] = config.Database.Endpoint
-		}
-
-		c.JSON(http.StatusOK, topology)
+		c.JSON(http.StatusOK, gin.H{"persistenceProvider": config.Database.Type})
 	})
 
 	srv := &http.Server{
