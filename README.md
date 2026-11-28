@@ -111,15 +111,25 @@ Los seis servicios escriben sus logs en JSON por la salida estándar, una línea
 | `level` | `info`, `warn` o `error` (y `debug` en checkout) |
 | `service` | `ui`, `catalog`, `carts`, `orders`, `checkout` o `admin` |
 | `msg` | El mensaje. Los requests usan `request` |
-| `method`, `path`, `status`, `duration_ms` | Solo en los requests |
+| `method`, `path`, `status`, `duration_ms` | En los requests. `method` y `path` también en `proxy error` (ui), y `path` en `unhandled error` (ui y admin) y en `panic` (orders) |
 | `error` | Solo si hubo un error: el detalle o el stack |
+| `component` | De dónde sale la línea cuando no es el propio servicio: `proxy` en ui y `gorm` en catalog y orders |
 
 ```json
 {"time":"2026-11-24T00:52:10.123Z","level":"info","service":"orders","msg":"request","method":"GET","path":"/orders","status":200,"duration_ms":3.41}
 ```
 
 - Los requests con estado 4xx salen como `warn` y los 5xx como `error`.
-- No se registran la query string, la IP, el user agent ni los cuerpos de los requests, y el SQL de gorm se registra con `?` en lugar de los valores: los logs no guardan datos de los usuarios. Tampoco aparece ningún secreto del `.env`, y la prueba de humo lo comprueba.
+- Además de la línea del request, un error puede dejar otra línea con el detalle:
+  - `proxy error` en ui;
+  - `unhandled error` en ui y admin;
+  - la del `ExceptionsHandler` en checkout;
+  - las de gorm en catalog y orders. En gorm el detalle, con el archivo y el SQL, va dentro de `msg`.
+
+  Para contar errores conviene usar solo las líneas del request: `msg = "request"` y `status >= 500`.
+- No se registran la query string, la IP, el user agent ni los cuerpos de los requests. Los paths sí, con los ids que llevan, como el del cliente en carts y checkout.
+- El SQL de gorm se registra con marcadores en lugar de los valores: `$1$`, `$2$`… con PostgreSQL, y `?` en el modo in-memory.
+- Tampoco aparece ningún secreto del `.env`. La prueba de humo lo comprueba, y comprueba además que un login mal armado no deja su body en los logs.
 - El health check no se registra, porque en la nube lo consulta el balanceador cada pocos segundos.
 
 Para ver solo los errores de todos los servicios:

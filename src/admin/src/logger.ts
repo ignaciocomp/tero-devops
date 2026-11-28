@@ -1,4 +1,4 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
 import { format } from 'util';
 
 // Logs en JSON, una línea por evento, con los mismos campos en los seis servicios:
@@ -45,6 +45,31 @@ export function requestLogger(logger: Logger, skip: string[] = []) {
       });
     });
     next();
+  };
+}
+
+// Manejador de errores, al final de la cadena. Sin él, Express escribe el stack en texto por
+// stderr: con un body que no es JSON o es muy grande, una ruta mal codificada o un Range que
+// no se puede servir. Además, el mensaje de JSON.parse trae un pedazo del body, que en el
+// login de admin puede ser la contraseña. El requestLogger ya registra el request con su
+// status, así que acá solo se agrega el detalle de los 5xx. Al cliente le llega solo el texto
+// del status, como con Express en producción, nunca err.message.
+export function errorHandler(logger: Logger): ErrorRequestHandler {
+  return (err: unknown, req: Request, res: Response, _next: NextFunction): void => {
+    const { status, statusCode, stack } = (err ?? {}) as { status?: unknown; statusCode?: unknown; stack?: unknown };
+    const code = Number(status ?? statusCode);
+    const httpStatus = code >= 400 && code < 600 ? code : 500;
+    if (httpStatus >= 500) {
+      logger.error('unhandled error', {
+        path: req.originalUrl.split('?')[0],
+        error: typeof stack === 'string' ? stack : String(err),
+      });
+    }
+    if (res.headersSent) {
+      req.socket.destroy();
+      return;
+    }
+    res.sendStatus(httpStatus);
   };
 }
 
