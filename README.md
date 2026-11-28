@@ -7,7 +7,7 @@ Tero es una tienda en línea basada en microservicios. Permite explorar un catá
 ## Requisitos previos
 
 - [Docker](https://docs.docker.com/get-docker/) 24+ (en Linux, Docker Engine 28+: ver [Red y puertos](#red-y-puertos))
-- [Docker Compose](https://docs.docker.com/compose/install/) v2.20+
+- [Docker Compose](https://docs.docker.com/compose/install/) v2.23.1+ (la configuración de Redis usa `configs` con `content`, que llegó en esa versión)
 
 ## Inicio rápido
 
@@ -26,6 +26,8 @@ docker compose up --build
 ```
 
 > Si la base de datos ya se había creado con otra contraseña (por ejemplo, con la configuración anterior del repo), catalog, carts y orders fallan al arrancar con `password authentication failed for user "retail_user"`, y admin falla con el mismo error recién al abrir el panel después del login. En ese caso, `docker compose down -v` borra el volumen de la base con todos sus datos, y el próximo `docker compose up --build` la vuelve a crear con la contraseña del `.env`.
+>
+> Un `.env` armado antes de que Redis tuviera contraseña no trae `REDIS_PASSWORD`, y compose no levanta: dice `Falta REDIS_PASSWORD en .env`. Alcanza con agregarla, generada igual que las otras.
 
 | Servicio | URL                   |
 |----------|-----------------------|
@@ -48,14 +50,14 @@ Solo la tienda y el panel de admin se publican en el host, y únicamente en `127
 
 `localhost` también funciona, pero en Windows algunos clientes prueban primero IPv6 (`::1`), donde no hay nada publicado, y tardan unos 2 segundos en pasar a IPv4. Por eso los ejemplos usan `127.0.0.1`.
 
-Para consultar la base o Redis no hace falta publicarlos:
+Para consultar la base o Redis no hace falta publicarlos. psql entra por el socket Unix del contenedor, sin TLS ni contraseña. redis-cli toma la contraseña del archivo de configuración del contenedor, así no aparece en la pantalla ni en el historial:
 
 ```bash
 docker compose exec db psql -U retail_user -d orders
-docker compose exec redis redis-cli
+docker compose exec redis sh -c 'REDISCLI_AUTH="$(sed -n "s/^requirepass //p" /usr/local/etc/redis/redis.conf)" redis-cli'
 ```
 
-Si se necesita un cliente gráfico, crear en la raíz del repo un `docker-compose.override.yml` (no se versiona) que publique la base solo en `127.0.0.1` y aplicarlo con `docker compose up -d`. Al terminar, borrarlo y volver a correr `docker compose up -d` para que la base deje de publicarse. Mientras `db` esté publicada, la prueba de humo marca como falla la prueba de red de `db`.
+Si se necesita un cliente gráfico, crear en la raíz del repo un `docker-compose.override.yml` (no se versiona) que publique la base solo en `127.0.0.1` y aplicarlo con `docker compose up -d`. El cliente se tiene que conectar con TLS (`sslmode=require`), porque la base rechaza las conexiones por la red sin TLS. Al terminar, borrarlo y volver a correr `docker compose up -d` para que la base deje de publicarse. Mientras `db` esté publicada, la prueba de humo marca como falla la prueba de red de `db`.
 
 ```yaml
 services:
@@ -64,7 +66,20 @@ services:
       - "127.0.0.1:5433:5432"
 ```
 
-> Cada `docker compose up -d` después de agregar o sacar el override (o de cualquier cambio en la configuración de `db`) recrea `db`. carts no se reconecta y responde 500 hasta reiniciarlo: `docker compose restart carts`.
+> Cada `docker compose up -d` después de agregar o sacar el override (o de cualquier cambio en la configuración de `db`) recrea `db`. Los servicios se reconectan solos, sin reiniciarlos: ver [TLS y contraseñas](#tls-y-contraseñas).
+
+## TLS y contraseñas
+
+El stack local se comporta como la nube, así lo que se prueba acá y en el CI es lo que va a pasar en AWS. Las decisiones y las alternativas están en el [ADR 0004](docs/adr/0004-tls-y-credenciales-hacia-los-datos.md).
+
+- **La base exige TLS**, como RDS con PostgreSQL 16 (`rds.force_ssl=1`). PostgreSQL arranca con `ssl=on` y el certificado de prueba (*snakeoil*) que trae la imagen, y [`pg_hba.conf`](pg_hba.conf) rechaza las conexiones por la red que no usan TLS.
+- **catalog, carts, orders y admin se conectan con TLS.** Cada uno tiene su variable de `sslmode` (ver [Variables de entorno](#variables-de-entorno)), con los valores de libpq y `require` por defecto: la conexión va cifrada, pero no se verifica el certificado del servidor.
+- **Redis pide contraseña** (`REDIS_PASSWORD`), como un ElastiCache con AUTH. checkout la recibe aparte de la URL, en `RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD`. Con `rediss://` en la URL, checkout se conecta con TLS, que ElastiCache exige para usar AUTH.
+- **Las contraseñas pueden tener cualquier carácter.** catalog y orders arman la conexión a PostgreSQL como URL, con el usuario y la contraseña escapados. Las claves que genera RDS llevan puntuación.
+- **Si la base se reinicia** (un mantenimiento o un failover de RDS), los servicios se reconectan solos. catalog y orders descartan las conexiones cortadas del pool, admin también (y ya no se cae cuando la base corta una conexión inactiva), y carts reabre su conexión y repite la operación una vez.
+- **`/topology`** de catalog y checkout devuelve solo el tipo de persistencia, sin el endpoint de la base ni la URL de Redis.
+
+La prueba de humo comprueba cada punto. Intenta una conexión sin TLS, mira en `pg_stat_ssl` que las conexiones de los servicios estén cifradas, le pide a Redis un comando sin contraseña y consulta `/topology`. Al final reinicia `db` y comprueba que los cuatro servicios con base responden al primer intento.
 
 ## Comandos útiles
 
@@ -81,7 +96,8 @@ docker compose up --build <servicio>
 # Ver logs de un servicio
 docker compose logs -f <servicio>
 
-# Prueba de humo: recorre los seis servicios (con el stack levantado y el .env completo)
+# Prueba de humo: recorre los seis servicios (con el stack levantado y el .env completo).
+# En el medio reinicia db, para probar que los servicios se reconectan solos.
 bash scripts/smoke-test.sh
 ```
 
@@ -226,11 +242,12 @@ Las contraseñas y el secreto JWT no tienen valor por defecto: se definen en `.e
 | Variable            | Descripción                               | Default         |
 |---------------------|-------------------------------------------|-----------------|
 | `POSTGRES_PASSWORD` | Contraseña de `retail_user` en PostgreSQL | *(obligatoria)* |
+| `REDIS_PASSWORD`    | Contraseña de Redis                       | *(obligatoria)* |
 | `ADMIN_USERNAME`    | Usuario del panel de administración       | `admin`         |
 | `ADMIN_PASSWORD`    | Contraseña del panel de administración    | *(obligatoria)* |
 | `ADMIN_JWT_SECRET`  | Secreto para firmar los JWT del admin     | *(obligatoria)* |
 
-`docker-compose.yml` le pasa `POSTGRES_PASSWORD` a cada servicio con el nombre que ese servicio espera: `POSTGRES_PASSWORD` (db), `RETAIL_CATALOG_PERSISTENCE_PASSWORD` (catalog), `CART_POSTGRES_PASSWORD` (carts), `RETAIL_ORDERS_PERSISTENCE_PASSWORD` (orders) y `DB_PASSWORD` (admin). Las tablas de abajo usan esos nombres.
+`docker-compose.yml` le pasa `POSTGRES_PASSWORD` a cada servicio con el nombre que ese servicio espera: `POSTGRES_PASSWORD` (db), `RETAIL_CATALOG_PERSISTENCE_PASSWORD` (catalog), `CART_POSTGRES_PASSWORD` (carts), `RETAIL_ORDERS_PERSISTENCE_PASSWORD` (orders) y `DB_PASSWORD` (admin). `REDIS_PASSWORD` va a la configuración de redis (`requirepass`) y a checkout (`RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD`). Las tablas de abajo usan esos nombres.
 
 ### UI
 | Variable                        | Descripción                  | Default               |
@@ -248,12 +265,16 @@ Las contraseñas y el secreto JWT no tienen valor por defecto: se definen en `.e
 | `RETAIL_CATALOG_PERSISTENCE_PASSWORD`  | Contraseña PostgreSQL | *(obligatoria)*  |
 | `RETAIL_ORDERS_PERSISTENCE_PASSWORD`   | Contraseña PostgreSQL | *(obligatoria)*  |
 | `CART_POSTGRES_PASSWORD`               | Contraseña PostgreSQL | *(obligatoria)*  |
+| `RETAIL_CATALOG_PERSISTENCE_SSLMODE`   | TLS hacia la base (`sslmode` de libpq: `disable`, `require`, `verify-full`...) | `require` |
+| `RETAIL_ORDERS_PERSISTENCE_SSLMODE`    | Lo mismo, para orders | `require`        |
+| `CART_POSTGRES_SSLMODE`                | Lo mismo, para carts  | `require`        |
 
 ### Checkout
 | Variable                                   | Descripción              | Default               |
 |--------------------------------------------|--------------------------|------------------------|
 | `RETAIL_CHECKOUT_PERSISTENCE_PROVIDER`     | Tipo de persistencia     | `redis`               |
-| `RETAIL_CHECKOUT_PERSISTENCE_REDIS_URL`    | URL de Redis             | `redis://redis:6379`  |
+| `RETAIL_CHECKOUT_PERSISTENCE_REDIS_URL`    | URL de Redis (`rediss://` para TLS) | `redis://redis:6379`  |
+| `RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD` | Contraseña de Redis (si la URL trae una, gana la de la URL) | *(vacía: sin contraseña)* |
 | `RETAIL_CHECKOUT_ENDPOINTS_ORDERS`         | URL del servicio orders  | `http://orders:8080`  |
 
 ### Admin
@@ -263,6 +284,7 @@ Las contraseñas y el secreto JWT no tienen valor por defecto: se definen en `.e
 | `ADMIN_PASSWORD`    | Contraseña administrador   | *(obligatoria)*           |
 | `ADMIN_JWT_SECRET`  | Secreto para tokens JWT    | *(obligatoria)*           |
 | `DB_PASSWORD`       | Contraseña PostgreSQL      | *(obligatoria)*           |
+| `DB_SSLMODE`        | TLS hacia la base: `disable`, `require` o `verify-full` (con otro valor, admin no arranca) | `require` |
 
 ---
 
@@ -278,6 +300,7 @@ tero-devops/
 ├── .trivyignore        # Excepciones de Trivy: CVE con parche que todavía no se puede aplicar
 ├── docker-compose.yml
 ├── init-db.sql
+├── pg_hba.conf         # Acceso a PostgreSQL en compose: por la red, solo con TLS
 ├── docs/
 │   ├── adr/            # Decisiones de arquitectura (ADR)
 │   └── informes/       # Informes de seguridad y de análisis estático

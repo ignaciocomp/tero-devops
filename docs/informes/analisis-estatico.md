@@ -24,6 +24,14 @@ El umbral funciona como un trinquete: cualquier hallazgo nuevo de nivel WARNING 
 
 No hubo hallazgos ERROR. Semgrep además avisó que no pudo analizar del todo 4 Dockerfiles (ui, admin, carts y checkout): no interpreta bien los `RUN` con continuaciones de línea y comentarios intercalados, así que las reglas de Dockerfile cubren esos archivos solo en parte.
 
+## Riesgos aceptados
+
+Hallazgos reales que responden a una decisión escrita en un ADR, silenciados con `nosemgrep` según el [ADR 0003](../adr/0003-ci-y-quality-gates.md#cómo-se-maneja-una-excepción). No cuentan para el umbral, así que cada uno queda listado acá con su fecha de revisión.
+
+| Hallazgo | Severidad | Dónde | Por qué se acepta | Mejora prevista | Desde | Revisión |
+|---|---|---|---|---|---|---|
+| `bypass-tls-verification` (`rejectUnauthorized: false`) | WARNING | `src/admin/src/app.ts`, en `dbSsl` | `DB_SSLMODE=require` cifra la conexión a la base sin verificar el certificado, igual que `sslmode=require` en los otros tres servicios. Es el valor por defecto, para conectarse a RDS sin el bundle de su CA ([ADR 0004](../adr/0004-tls-y-credenciales-hacia-los-datos.md)) | `verify-full` con el bundle de CA de RDS (`NODE_EXTRA_CA_CERTS` en admin) | 2026-11-27 | 2026-12-31 |
+
 ## Interpretación
 
 Que haya tan pocos hallazgos no significa que el código no tenga problemas. Significa que no usa los patrones inseguros que buscan las reglas de la comunidad: inyección, `eval`, criptografía débil, deserialización insegura, entre otros. Semgrep tampoco mide mantenibilidad (duplicación, complejidad, "code smells") ni detecta fallas de diseño. Los problemas más significativos de Tero aparecieron en la revisión manual y al operar el stack, no en el escaneo:
@@ -34,7 +42,7 @@ Que haya tan pocos hallazgos no significa que el código no tenga problemas. Sig
 - endpoints de diagnóstico sin autenticación (`/chaos/*` en catalog) y endpoints que devuelven la ubicación de la base y de Redis;
 - un único usuario de base de datos con privilegios de superusuario para todos los servicios.
 
-Por eso el gate actual sirve para evitar regresiones, pero no alcanza como medida de calidad del código.
+Por eso el gate actual sirve para evitar regresiones, pero no alcanza como medida de calidad del código. El PR del #18 corrigió los tres primeros y los endpoints de `/topology` (ver el [ADR 0004](../adr/0004-tls-y-credenciales-hacia-los-datos.md)). Quedan `/chaos/*` y el usuario único.
 
 ## Recomendaciones
 
