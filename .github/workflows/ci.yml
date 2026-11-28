@@ -299,13 +299,16 @@ jobs:
           # Solo hexadecimales, como pide .env.example.
           umask 077
           postgres_password="$(openssl rand -hex 32)"
+          redis_password="$(openssl rand -hex 32)"
           admin_password="$(openssl rand -hex 32)"
           admin_jwt_secret="$(openssl rand -hex 32)"
           echo "::add-mask::$postgres_password"
+          echo "::add-mask::$redis_password"
           echo "::add-mask::$admin_password"
           echo "::add-mask::$admin_jwt_secret"
           {
             echo "POSTGRES_PASSWORD=$postgres_password"
+            echo "REDIS_PASSWORD=$redis_password"
             echo "ADMIN_USERNAME=admin"
             echo "ADMIN_PASSWORD=$admin_password"
             echo "ADMIN_JWT_SECRET=$admin_jwt_secret"
