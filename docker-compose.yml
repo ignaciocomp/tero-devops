@@ -1,6 +1,19 @@
 services:
   db:
     image: postgres:16
+    # Como RDS con PostgreSQL 16 (rds.force_ssl=1): por la red solo se entra con TLS. El
+    # certificado es el de prueba (snakeoil) que trae la imagen, que alcanza para cifrar en
+    # local y en el CI. pg_hba.conf rechaza las conexiones por la red que no usan TLS.
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+      - -c
+      - ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     environment:
       POSTGRES_USER: retail_user
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env (ver .env.example)}"
@@ -8,6 +21,7 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     # Sin "ports": solo se llega desde la red interna de compose (db:5432)
     healthcheck:
       # -h 127.0.0.1 fuerza TCP: durante el init el server temporal solo escucha en socket Unix
@@ -19,6 +33,13 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Con contraseña, como el ElastiCache de la nube. La clave llega en un archivo de
+    # configuración que arma compose (ver "configs" al final), así no queda en la línea de
+    # comandos ni en el entorno del contenedor.
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    configs:
+      - source: redis-conf
+        target: /usr/local/etc/redis/redis.conf
     # Sin "ports": solo se llega desde la red interna de compose (redis:6379)
 
   catalog:
@@ -31,6 +52,8 @@ services:
       RETAIL_CATALOG_PERSISTENCE_DB_NAME: catalogdb
       RETAIL_CATALOG_PERSISTENCE_USER: retail_user
       RETAIL_CATALOG_PERSISTENCE_PASSWORD: "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env (ver .env.example)}"
+      # TLS hacia db (require es también el valor por defecto de los cuatro servicios con base)
+      RETAIL_CATALOG_PERSISTENCE_SSLMODE: require
     restart: on-failure
     depends_on:
       db:
@@ -46,6 +69,7 @@ services:
       CART_POSTGRES_DB: cartdb
       CART_POSTGRES_USER: retail_user
       CART_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env (ver .env.example)}"
+      CART_POSTGRES_SSLMODE: require
       PORT: "8080"
     restart: on-failure
     depends_on:
@@ -61,6 +85,7 @@ services:
       RETAIL_ORDERS_PERSISTENCE_NAME: orders
       RETAIL_ORDERS_PERSISTENCE_USERNAME: retail_user
       RETAIL_ORDERS_PERSISTENCE_PASSWORD: "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env (ver .env.example)}"
+      RETAIL_ORDERS_PERSISTENCE_SSLMODE: require
     restart: on-failure
     depends_on:
       db:
@@ -72,6 +97,7 @@ services:
     environment:
       RETAIL_CHECKOUT_PERSISTENCE_PROVIDER: redis
       RETAIL_CHECKOUT_PERSISTENCE_REDIS_URL: redis://redis:6379
+      RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD: "${REDIS_PASSWORD:?Falta REDIS_PASSWORD en .env (ver .env.example)}"
       RETAIL_CHECKOUT_ENDPOINTS_ORDERS: http://orders:8080
     restart: on-failure
     depends_on:
@@ -102,6 +128,7 @@ services:
       DB_PORT: "5432"
       DB_USER: retail_user
       DB_PASSWORD: "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env (ver .env.example)}"
+      DB_SSLMODE: require
       ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Falta ADMIN_PASSWORD en .env (ver .env.example)}"
       ADMIN_JWT_SECRET: "${ADMIN_JWT_SECRET:?Falta ADMIN_JWT_SECRET en .env (ver .env.example)}"
@@ -114,3 +141,9 @@ services:
 
 volumes:
   db-data:
+
+configs:
+  # Compose arma este archivo con el valor del .env y lo copia al contenedor de redis.
+  redis-conf:
+    content: |
+      requirepass ${REDIS_PASSWORD:?Falta REDIS_PASSWORD en .env (ver .env.example)}
