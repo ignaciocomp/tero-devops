@@ -1,7 +1,8 @@
 # Un ALB público por ambiente: el puerto 80 va a ui, abierto a internet, y el 8081 a admin,
 # abierto solo a var.admin_allowed_cidrs. Es el mismo esquema que compose (8080 y 8081).
 #
-# Sin HTTPS: no hay dominio propio para emitir un certificado en ACM. Ver el README de infra.
+# Sin HTTPS: no hay dominio propio para emitir un certificado en ACM. Es un riesgo aceptado del
+# ADR 0005.
 
 resource "aws_security_group" "alb" {
   name        = "${local.name}-alb"
@@ -40,8 +41,9 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_app" {
   description                  = "Hacia los servicios"
 }
 
-# Sin access logs por ahora: piden un bucket S3 con su política. Mientras, cada request queda en
-# los logs JSON de ui y admin, y el ALB publica sus métricas (5xx, latencia) en CloudWatch.
+# Sin access logs por ahora (riesgo aceptado del ADR 0005): piden un bucket S3 con su política.
+# Mientras, cada request queda en los logs JSON de ui y admin, y el ALB publica sus métricas (5xx,
+# latencia) en CloudWatch.
 # nosemgrep: terraform.aws.security.aws-elb-access-logs-not-enabled.aws-elb-access-logs-not-enabled
 resource "aws_lb" "this" {
   name               = local.name
@@ -79,7 +81,7 @@ resource "aws_lb_target_group" "this" {
 resource "aws_lb_listener" "ui" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
-  # HTTP porque no hay dominio para un certificado de ACM (ver el comentario de arriba).
+  # HTTP porque no hay dominio para un certificado de ACM: riesgo aceptado del ADR 0005.
   protocol = "HTTP" # nosemgrep: terraform.aws.security.insecure-load-balancer-tls-version.insecure-load-balancer-tls-version
 
   default_action {
@@ -91,7 +93,7 @@ resource "aws_lb_listener" "ui" {
 resource "aws_lb_listener" "admin" {
   load_balancer_arn = aws_lb.this.arn
   port              = 8081
-  # HTTP porque no hay dominio para un certificado de ACM (ver el comentario de arriba).
+  # HTTP porque no hay dominio para un certificado de ACM: riesgo aceptado del ADR 0005.
   protocol = "HTTP" # nosemgrep: terraform.aws.security.insecure-load-balancer-tls-version.insecure-load-balancer-tls-version
 
   default_action {
@@ -152,7 +154,7 @@ resource "aws_vpc_security_group_egress_rule" "internal_alb_to_app" {
   description                  = "Hacia los servicios"
 }
 
-# Mismo criterio que el ALB público para los access logs.
+# Mismo riesgo aceptado que el ALB público para los access logs (ADR 0005).
 # nosemgrep: terraform.aws.security.aws-elb-access-logs-not-enabled.aws-elb-access-logs-not-enabled
 resource "aws_lb" "internal" {
   count = var.service_connect ? 0 : 1
@@ -191,7 +193,7 @@ resource "aws_lb_listener" "internal" {
 
   load_balancer_arn = aws_lb.internal[0].arn
   port              = each.value
-  # HTTP dentro de la VPC, entre los servicios y sin pasar por internet (ver el ADR 0005).
+  # HTTP dentro de la VPC, entre los servicios y sin pasar por internet: riesgo aceptado del ADR 0005.
   protocol = "HTTP" # nosemgrep: terraform.aws.security.insecure-load-balancer-tls-version.insecure-load-balancer-tls-version
 
   default_action {

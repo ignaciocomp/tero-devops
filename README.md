@@ -130,7 +130,7 @@ Solo en un push a `main`, y si pasó todo lo anterior, las seis imágenes se pub
 
 ## Infraestructura
 
-Los tres ambientes (Dev, Test y Prod) se definen con Terraform en [`infra/`](infra/README.md): ECS Fargate detrás de un ALB, RDS PostgreSQL, ElastiCache Redis y los secretos en Secrets Manager. Cada ambiente tiene su `.tfvars` y su estado en S3.
+Los tres ambientes (Dev, Test y Prod) se definen con Terraform en [`infra/`](infra/README.md): ECS Fargate detrás de un ALB, RDS PostgreSQL, ElastiCache Redis y los secretos en Secrets Manager. Cada ambiente tiene su `.tfvars` y su estado en S3. Corren en el AWS Academy Learner Lab: la decisión y sus consecuencias están en el [ADR 0005](docs/adr/0005-learner-lab-e-infraestructura.md).
 
 ---
 

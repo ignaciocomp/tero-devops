@@ -5,6 +5,7 @@
 
 # CloudWatch Logs ya cifra los logs con una clave de AWS. Una clave propia de KMS (CMK) suma
 # costo y permisos, y no cambia lo que se protege: los logs no llevan secretos ni datos personales.
+# Es un falso positivo (ADR 0005): la regla pide una CMK, no que los logs estén cifrados.
 # nosemgrep: terraform.aws.security.aws-cloudwatch-log-group-unencrypted.aws-cloudwatch-log-group-unencrypted
 resource "aws_cloudwatch_log_group" "this" {
   name              = var.log_group_name
