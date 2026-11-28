@@ -36,7 +36,7 @@ resumen: corre siempre al final, con el resultado de los cinco
 | Gate | Herramienta | Qué analiza | Corta el build si | Excepciones |
 |---|---|---|---|---|
 | Secretos | Gitleaks 8.30.1 | Todo el historial de git (`fetch-depth: 0`), con las reglas por defecto más las de `.gitleaks.toml` | Hay al menos un hallazgo | `.gitleaksignore`, por fingerprint |
-| SAST (seguridad) | Semgrep 1.186.0 | Código y Dockerfiles, packs `p/default`, `p/golang`, `p/python`, `p/javascript`, `p/typescript`, `p/nodejs` y `p/dockerfile` | Hay al menos un hallazgo ERROR, CRITICAL o HIGH | `nosemgrep: <regla>` en la línea, con justificación |
+| SAST (seguridad) | Semgrep 1.186.0 | Código y Dockerfiles, packs `p/default`, `p/golang`, `p/python`, `p/javascript`, `p/typescript`, `p/nodejs` y `p/dockerfile`, más las reglas propias de `.semgrep/` (desde el PR del #18) | Hay al menos un hallazgo ERROR, CRITICAL o HIGH | `nosemgrep: <regla>` en la línea, con justificación |
 | Análisis estático (calidad) | Semgrep 1.186.0 | Lo mismo | Los hallazgos WARNING o MEDIUM superan `SEMGREP_MAX_WARNINGS` (hoy 1, la línea base medida) | Se baja el umbral con un PR |
 | Dependencias (SCA) | Trivy 0.76.2 `fs` | `package-lock.json`, `yarn.lock`, `go.mod` y `requirements.txt` | Hay una vulnerabilidad CRITICAL o HIGH **con parche disponible** | `.trivyignore`, solo si tiene parche y no se puede aplicar todavía; con justificación y vencimiento |
 | Imágenes | Trivy 0.76.2 `image` | El tar de cada una de las seis imágenes: paquetes de Debian y dependencias de cada lenguaje | Igual que dependencias | `.trivyignore` |
@@ -184,6 +184,7 @@ CVE-AAAA-NNNNN exp:2027-01-31
 
 **Hallazgo de Semgrep:**
 - Falso positivo: `nosemgrep: <id-de-la-regla>` en esa línea, con un comentario que explique por qué. Nunca un `nosemgrep` sin regla, que apaga todas.
+- Riesgo aceptado: un hallazgo real que responde a una decisión escrita en un ADR, con sus alternativas y la mejora prevista. Va con `nosemgrep: <id-de-la-regla>` en esa línea o en la anterior, más un comentario que nombre el ADR. Además se lista en la tabla de riesgos aceptados del [informe de análisis estático](../informes/analisis-estatico.md), con una fecha de revisión. Sin ADR no es un riesgo aceptado: se corrige o entra por el umbral. (Agregado el 2026-11-27, con el primer caso: el TLS sin verificar el certificado de admin, [ADR 0004](0004-tls-y-credenciales-hacia-los-datos.md).)
 - WARNING real que no se corrige ahora: entra en el umbral solo si el umbral ya lo cubre. **El umbral no se sube**; se baja cuando se corrigen hallazgos.
 
 ## Evidencia

@@ -7,3 +7,4 @@
 .gitleaks.toml text eol=lf
 .gitleaksignore text eol=lf
 .trivyignore text eol=lf
+pg_hba.conf text eol=lf

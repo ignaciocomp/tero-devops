@@ -10,15 +10,10 @@ export class AppController {
     return { status: 'ok' };
   }
 
+  // Solo el tipo de persistencia: la URL de Redis puede llevar la contraseña, y el endpoint es
+  // un detalle de la infraestructura que no hace falta exponer.
   @Get('topology')
   topology() {
-    const persistenceProvider = this.configService.get('persistence.provider');
-    let databaseEndpoint = 'N/A';
-
-    if (persistenceProvider === 'redis') {
-      databaseEndpoint = this.configService.get('persistence.redis.url');
-    }
-
-    return { persistenceProvider, databaseEndpoint };
+    return { persistenceProvider: this.configService.get('persistence.provider') };
   }
 }

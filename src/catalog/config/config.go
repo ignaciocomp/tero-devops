@@ -12,6 +12,9 @@ type DatabaseConfiguration struct {
 	Endpoint       string `env:"RETAIL_CATALOG_PERSISTENCE_ENDPOINT"`
 	Name           string `env:"RETAIL_CATALOG_PERSISTENCE_DB_NAME,default=catalogdb"`
 	User           string `env:"RETAIL_CATALOG_PERSISTENCE_USER,default=catalog_user"`
-	Password       string `env:"RETAIL_CATALOG_PERSISTENCE_PASSWORD"`
+	Password       string `env:"RETAIL_CATALOG_PERSISTENCE_PASSWORD"` // main.go la relee tal cual
 	ConnectTimeout int    `env:"RETAIL_CATALOG_PERSISTENCE_CONNECT_TIMEOUT,default=5"`
+	// TLS hacia la base: disable, require (el valor por defecto, también si la variable está
+	// vacía) o verify-full. RDS con PostgreSQL 16 rechaza las conexiones sin TLS.
+	SSLMode string `env:"RETAIL_CATALOG_PERSISTENCE_SSLMODE,default=require"`
 }
