@@ -32,8 +32,35 @@ const DB_PORT      = parseInt(process.env.DB_PORT    || '5432');
 const DB_USER      = process.env.DB_USER             || 'retail_user';
 const DB_PASS      = requireEnv('DB_PASSWORD');
 
-const catalogDb = new Pool({ host: DB_HOST, port: DB_PORT, database: 'catalogdb', user: DB_USER, password: DB_PASS });
-const ordersDb  = new Pool({ host: DB_HOST, port: DB_PORT, database: 'orders',    user: DB_USER, password: DB_PASS });
+// TLS hacia la base, con los mismos valores que en los otros servicios: RDS con PostgreSQL 16
+// rechaza las conexiones sin TLS. require cifra sin verificar el certificado, igual que en
+// libpq. verify-full además lo verifica contra las CA que trae Node.
+function dbSsl(mode: string): false | { rejectUnauthorized: boolean } {
+  switch (mode) {
+    case 'disable':     return false;
+    // Riesgo aceptado (ADR 0004): require cifra sin verificar el certificado, igual que en libpq.
+    // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
+    case 'require':     return { rejectUnauthorized: false };
+    case 'verify-full': return { rejectUnauthorized: true };
+    default:
+      logger.error('DB_SSLMODE no soportado', { value: mode, supported: 'disable, require, verify-full' });
+      process.exit(1);
+  }
+}
+const DB_SSL = dbSsl(process.env.DB_SSLMODE || 'require');
+
+const dbConfig = { host: DB_HOST, port: DB_PORT, user: DB_USER, password: DB_PASS, ssl: DB_SSL };
+const catalogDb = new Pool({ ...dbConfig, database: 'catalogdb' });
+const ordersDb  = new Pool({ ...dbConfig, database: 'orders' });
+// Si la base corta una conexión inactiva (un reinicio o un failover de RDS), el Pool emite
+// 'error'. Sin listener, Node lo toma como una excepción no manejada y el proceso se cae. pg ya
+// saca esa conexión del Pool y abre otra cuando haga falta: alcanza con registrarlo, como warn,
+// porque se recupera solo.
+for (const [database, pool] of [['catalogdb', catalogDb], ['orders', ordersDb]] as const) {
+  pool.on('error', (err) => {
+    logger.warn('idle database connection lost', { database, error: err.message });
+  });
+}
 
 // ── Auth middleware ────────────────────────────────────────────────────────
 
