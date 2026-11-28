@@ -7,8 +7,8 @@ vpc_cidr    = "10.30.0.0/16"
 enable_nat_gateway  = true
 admin_allowed_cidrs = []
 
-# Si el #15 decide el Learner Lab, ECS usa el rol que trae el lab:
-# lab_role_name = "LabRole"
+# Learner Lab (decidido el 27/11): ECS usa el rol que trae el lab, porque no se pueden crear roles.
+lab_role_name = "LabRole"
 
 services = {
   ui       = { cpu = 256, memory = 512, desired_count = 2 }
