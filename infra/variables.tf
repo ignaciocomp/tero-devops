@@ -149,3 +149,14 @@ variable "redis_password_version" {
     error_message = "redis_password_version tiene que ser un entero mayor o igual a 1."
   }
 }
+
+variable "container_insights" {
+  description = "Container Insights del cluster: enabled o disabled. Se cobra por métrica (unos USD 49 por mes por ambiente con seis servicios). CPU y memoria por servicio ya vienen gratis en AWS/ECS."
+  type        = string
+  default     = "disabled"
+
+  validation {
+    condition     = contains(["enabled", "disabled"], var.container_insights)
+    error_message = "container_insights tiene que ser enabled o disabled."
+  }
+}

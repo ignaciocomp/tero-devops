@@ -50,10 +50,12 @@ resource "aws_service_discovery_http_namespace" "this" {
 resource "aws_ecs_cluster" "this" {
   name = local.name
 
-  # Métricas de CPU y memoria por servicio, para el dashboard y las alarmas.
+  # CPU y memoria por servicio ya vienen gratis en AWS/ECS (CPUUtilization y MemoryUtilization).
+  # Container Insights suma métricas por tarea, pero se cobra por métrica: unos USD 49 por mes por
+  # ambiente. Se prende por ambiente, si el dashboard o las alarmas lo necesitan.
   setting {
     name  = "containerInsights"
-    value = "enabled"
+    value = var.container_insights
   }
 
   dynamic "service_connect_defaults" {

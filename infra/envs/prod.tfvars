@@ -19,6 +19,8 @@ services = {
   checkout = { cpu = 256, memory = 512, desired_count = 2 }
   admin    = { cpu = 256, memory = 512, desired_count = 1 }
 }
+# CPU y memoria por servicio ya vienen en AWS/ECS sin costo. Container Insights se cobra por métrica.
+container_insights = "disabled"
 log_retention_days = 30
 
 db_instance_class        = "db.t4g.small"
