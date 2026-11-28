@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Prueba de humo de Tero: recorre los seis servicios a través de la UI y del panel de admin.
-# Después comprueba que los seis escriben sus logs en JSON, sin los secretos del .env, y qué
-# publica cada servicio en el host: solo ui y admin, y en 127.0.0.1.
+# También comprueba lo que va a exigir la nube: TLS hacia la base, Redis con contraseña y que
+# los servicios se reconecten solos si la base se reinicia (para eso reinicia db). Después
+# comprueba que los seis escriben sus logs en JSON, sin los secretos del .env, y qué publica
+# cada servicio en el host: solo ui y admin, y en 127.0.0.1.
 #
 # Requisitos: el stack levantado (docker compose up -d), el .env completo, curl y node.
 # Uso:        bash scripts/smoke-test.sh [proyecto-de-compose]
@@ -116,14 +118,55 @@ check "admin: GET /admin/api/products (lee catalogdb)" 200 "$(code -b "$TMP/jar"
 check "admin: GET /admin/api/orders (lee orders)" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/orders")"
 check "admin: GET /admin/api/orders sin cookie" 401 "$(code "$ADMIN/admin/api/orders")"
 
+# TLS y contraseñas, como en la nube: db acepta conexiones por la red solo con TLS (como RDS con
+# PostgreSQL 16) y redis pide contraseña (como ElastiCache con AUTH). Las consultas a db corren
+# dentro de su contenedor, con la contraseña de su entorno: no pasan por este script.
+db_sql() { "${COMPOSE[@]}" exec -T db psql -U retail_user -d orders -tAc "$1" 2>&1 | tr -d '\r'; }
+db_red() { # una conexión por la red (al hostname db, no al socket Unix) con el sslmode indicado
+  "${COMPOSE[@]}" exec -T -e MODO="$1" db sh -c \
+    'PGPASSWORD="$POSTGRES_PASSWORD" psql "host=db user=retail_user dbname=orders sslmode=$MODO connect_timeout=5" -tAc "select 1"' 2>&1 | tr -d '\r'
+}
+sin_tls="$(db_red disable)"
+case "$sin_tls" in *"no encryption"*) sin_tls=rechazada ;; esac
+check "db: rechaza una conexión por la red sin TLS" rechazada "$sin_tls"
+check "db: acepta la misma conexión con TLS" 1 "$(db_red require)"
+check "db: las conexiones de catalog, carts, orders y admin usan TLS" "cartdb:true,catalogdb:true,orders:true" \
+  "$(db_sql "select string_agg(distinct a.datname || ':' || s.ssl, ',' order by a.datname || ':' || s.ssl) from pg_stat_activity a join pg_stat_ssl s using (pid) where a.client_addr is not null")"
+check "redis: rechaza comandos sin contraseña" NOAUTH "$("${COMPOSE[@]}" exec -T redis redis-cli ping 2>&1 | tr -d '\r' | awk 'NR == 1 { print $1 }')"
+
+# /topology devuelve solo el tipo de persistencia, sin la URL de Redis ni el endpoint de la base.
+# checkout y catalog no se publican en el host: se consultan desde el contenedor de checkout.
+topology() { # MSYS_NO_PATHCONV: en Git Bash, /nodejs/bin/node se convertiría en una ruta de Windows
+  MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T checkout /nodejs/bin/node -e \
+    'fetch(process.argv[1]).then((r) => r.text()).then((t) => console.log(t), (e) => console.log("error: " + e.message))' "$1" 2>&1 | tr -d '\r'
+}
+check "checkout: /topology sin la URL de Redis" '{"persistenceProvider":"redis"}' "$(topology http://127.0.0.1:8080/topology)"
+check "catalog: /topology sin el endpoint de la base" '{"persistenceProvider":"postgres"}' "$(topology http://catalog:8080/topology)"
+
+# Reinicio de la base, como en un mantenimiento o un failover de RDS: los servicios se tienen que
+# reconectar solos y responder al primer intento, sin reiniciarlos. Las pruebas de logs de más
+# abajo cubren también lo que escriben mientras tanto.
+db_id="$("${COMPOSE[@]}" ps -q db)"
+"${COMPOSE[@]}" restart db > /dev/null 2>&1
+for i in $(seq 1 60); do
+  [ "$(docker inspect --format '{{.State.Health.Status}}' "$db_id" 2>&1)" = healthy ] && break
+  sleep 1
+done
+check "db: vuelve a estar healthy después del reinicio" healthy "$(docker inspect --format '{{.State.Health.Status}}' "$db_id" 2>&1)"
+check "carts via ui: lee el carrito después del reinicio de la base" 200 "$(code "$UI/api/carts/$CID")"
+check "catalog via ui: lista los productos después del reinicio de la base" 200 "$(code "$UI/api/catalog/products")"
+ORDEN='{"shippingAddress":{"firstName":"Ana","lastName":"Prueba","address1":"Calle 1234","city":"Montevideo","state":"MVD","zipCode":"11000","email":"ana@example.com"},"items":[{"productId":"smoke-item","name":"Item de prueba","quantity":1,"price":150}]}'
+check "orders via ui: guarda una orden después del reinicio de la base" 201 "$(code -X POST -H 'Content-Type: application/json' -d "$ORDEN" "$UI/api/orders")"
+check "admin: lee los productos después del reinicio de la base" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/products")"
+
 # Logs: los seis servicios escriben una línea JSON por evento, con los mismos campos
 for s in ui catalog carts orders checkout admin; do
   check "logs: $s escribe JSON con time, level, service, msg y los requests con campos" ok "$(json_logs "$s")"
 done
 # Ningún servicio escribe en sus logs los secretos del .env. Los valores pasan por una
 # variable de entorno de node y nunca se imprimen.
-SECRETS="$("${COMPOSE[@]}" config --format json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=JSON.parse(s).services;process.stdout.write(JSON.stringify([v.db.environment.POSTGRES_PASSWORD,v.admin.environment.ADMIN_PASSWORD,v.admin.environment.ADMIN_JWT_SECRET]))})')"
-check "logs: no aparecen los secretos del .env" ninguno "$("${COMPOSE[@]}" logs --no-color 2>&1 | TERO_SECRETS="$SECRETS" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const sec=JSON.parse(process.env.TERO_SECRETS||"[]").filter(Boolean);console.log(sec.length<3?"faltan-secretos":sec.some(x=>s.includes(x))?"aparecen":"ninguno")})')"
+SECRETS="$("${COMPOSE[@]}" config --format json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=JSON.parse(s).services;process.stdout.write(JSON.stringify([v.db.environment.POSTGRES_PASSWORD,v.checkout.environment.RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD,v.admin.environment.ADMIN_PASSWORD,v.admin.environment.ADMIN_JWT_SECRET]))})')"
+check "logs: no aparecen los secretos del .env" ninguno "$("${COMPOSE[@]}" logs --no-color 2>&1 | TERO_SECRETS="$SECRETS" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const sec=JSON.parse(process.env.TERO_SECRETS||"[]").filter(Boolean);console.log(sec.length<4?"faltan-secretos":sec.some(x=>s.includes(x))?"aparecen":"ninguno")})')"
 unset SECRETS
 
 # Red: de los 8 servicios de docker-compose.yml, solo ui y admin se publican en el host, en 127.0.0.1
