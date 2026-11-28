@@ -108,10 +108,14 @@ module "service" {
   service_connect_namespace_arn = try(aws_service_discovery_http_namespace.this[0].arn, null)
   subnet_ids                    = module.network.app_subnet_ids
   assign_public_ip              = module.network.app_assign_public_ip
-  security_group_ids            = [aws_security_group.app.id]
-  execution_role_arn            = local.execution_role_arn
-  task_role_arn                 = local.task_role_arn
-  target_group_arn              = try(aws_lb_target_group.this[each.key].arn, aws_lb_target_group.internal[each.key].arn, null)
+  security_group_ids = concat(
+    [aws_security_group.app.id],
+    contains(["catalog", "carts", "orders", "admin"], each.key) ? [aws_security_group.db_clients.id] : [],
+    each.key == "checkout" ? [aws_security_group.redis_clients.id] : [],
+  )
+  execution_role_arn = local.execution_role_arn
+  task_role_arn      = local.task_role_arn
+  target_group_arn   = try(aws_lb_target_group.this[each.key].arn, aws_lb_target_group.internal[each.key].arn, null)
 
   log_group_name     = "/tero/${var.environment}/${each.key}"
   log_retention_days = var.log_retention_days

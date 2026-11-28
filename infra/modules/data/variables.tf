@@ -12,9 +12,19 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
-variable "client_security_groups" {
-  description = "Security groups que pueden conectarse a PostgreSQL y a Redis, con un nombre fijo cada uno: { app = sg-... }. Las claves tienen que ser fijas porque los IDs no se conocen hasta el apply."
+variable "db_client_security_groups" {
+  description = "Security groups que pueden conectarse a PostgreSQL, con un nombre fijo cada uno: { db_clients = sg-... }. Las claves tienen que ser fijas porque los IDs no se conocen hasta el apply."
   type        = map(string)
+}
+
+variable "redis_client_security_groups" {
+  description = "Security groups que pueden conectarse a Redis, con el mismo formato que db_client_security_groups."
+  type        = map(string)
+}
+
+variable "log_retention_days" {
+  description = "Días que CloudWatch Logs guarda los logs de PostgreSQL."
+  type        = number
 }
 
 variable "apply_immediately" {

@@ -17,6 +17,14 @@ resource "aws_vpc" "this" {
   tags = { Name = var.name }
 }
 
+# El security group por defecto de la VPC trae reglas que dejan entrar y salir todo entre sus
+# miembros. Nadie lo usa, pero se le sacan las reglas por si algo queda asociado sin querer.
+resource "aws_default_security_group" "this" {
+  vpc_id = aws_vpc.this.id
+
+  tags = { Name = "${var.name}-default-sin-reglas" }
+}
+
 resource "aws_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
 

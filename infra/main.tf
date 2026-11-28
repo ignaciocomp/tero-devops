@@ -17,10 +17,12 @@ module "network" {
 module "data" {
   source = "./modules/data"
 
-  name                   = local.name
-  vpc_id                 = module.network.vpc_id
-  subnet_ids             = module.network.private_subnet_ids
-  client_security_groups = { app = aws_security_group.app.id }
+  name                         = local.name
+  vpc_id                       = module.network.vpc_id
+  subnet_ids                   = module.network.private_subnet_ids
+  db_client_security_groups    = { db_clients = aws_security_group.db_clients.id }
+  redis_client_security_groups = { redis_clients = aws_security_group.redis_clients.id }
+  log_retention_days           = var.log_retention_days
 
   db_password         = ephemeral.random_password.db.result
   db_password_version = var.db_password_version
@@ -108,6 +110,25 @@ resource "aws_vpc_security_group_ingress_rule" "app_from_app" {
   from_port                    = 8080
   to_port                      = 8080
   description                  = "Entre servicios (Service Connect)"
+}
+
+# Dos security groups sin reglas, que solo sirven de llave: la base acepta a quien tiene db_clients
+# (catalog, carts, orders y admin), y Redis a quien tiene redis_clients (checkout). Así ui no llega
+# a ninguno de los dos, y checkout no llega a la base.
+resource "aws_security_group" "db_clients" {
+  name        = "${local.name}-db-clients"
+  description = "Servicios de ${local.name} que usan PostgreSQL"
+  vpc_id      = module.network.vpc_id
+
+  tags = { Name = "${local.name}-db-clients" }
+}
+
+resource "aws_security_group" "redis_clients" {
+  name        = "${local.name}-redis-clients"
+  description = "Servicios de ${local.name} que usan Redis"
+  vpc_id      = module.network.vpc_id
+
+  tags = { Name = "${local.name}-redis-clients" }
 }
 
 # Salida abierta: las tareas bajan las imágenes de GHCR (fuera de AWS) y llaman a las APIs de

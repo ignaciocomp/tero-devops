@@ -1,6 +1,6 @@
 # Datos de un ambiente: un PostgreSQL en RDS (con las bases orders, catalogdb y cartdb, como el
-# db de compose) y un Redis en ElastiCache para checkout. Los dos en subredes privadas, y solo
-# aceptan conexiones de los security groups de var.client_security_groups.
+# db de compose) y un Redis en ElastiCache para checkout. Los dos en subredes privadas. PostgreSQL
+# solo acepta conexiones de var.db_client_security_groups, y Redis de var.redis_client_security_groups.
 
 # ── PostgreSQL ────────────────────────────────────────────────────────────
 
@@ -11,27 +11,23 @@ resource "aws_db_subnet_group" "this" {
 
 resource "aws_security_group" "db" {
   name        = "${var.name}-db"
-  description = "PostgreSQL de ${var.name}: solo desde los servicios"
+  description = "PostgreSQL de ${var.name}: solo desde los servicios que la usan"
   vpc_id      = var.vpc_id
 
   tags = { Name = "${var.name}-db" }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "db" {
-  for_each = var.client_security_groups
+  for_each = var.db_client_security_groups
 
   security_group_id            = aws_security_group.db.id
   referenced_security_group_id = each.value
   ip_protocol                  = "tcp"
   from_port                    = 5432
   to_port                      = 5432
-  description                  = "PostgreSQL desde los servicios"
+  description                  = "PostgreSQL desde ${each.key}"
 }
 
-# La contraseña del usuario maestro llega como valor efímero y se escribe con password_wo: no queda
-# en el estado. Se cambia subiendo db_password_version (ver secrets.tf en la raíz). Con
-# PostgreSQL, RDS crea solo la base de db_name (orders): catalogdb y cartdb las crea la tarea de
-# inicialización (ver el README de infra).
 # Un sufijo que cambia cada vez que se crea la base: así cada destroy deja su propio snapshot final,
 # y el segundo no choca con el del primero (DBSnapshotAlreadyExists).
 resource "random_id" "final_snapshot" {
@@ -40,6 +36,21 @@ resource "random_id" "final_snapshot" {
   byte_length = 4
 }
 
+# Los grupos donde RDS manda los logs de PostgreSQL. Si los crea RDS, quedan sin vencimiento y
+# fuera del estado: se crean acá, antes que la base, con la misma retención que los servicios.
+# Mismo criterio de cifrado que los de los servicios: falso positivo.
+# nosemgrep: terraform.aws.security.aws-cloudwatch-log-group-unencrypted.aws-cloudwatch-log-group-unencrypted
+resource "aws_cloudwatch_log_group" "db" {
+  for_each = toset(["postgresql", "upgrade"])
+
+  name              = "/aws/rds/instance/${var.name}/${each.key}"
+  retention_in_days = var.log_retention_days
+}
+
+# La contraseña del usuario maestro llega como valor efímero y se escribe con password_wo: no queda
+# en el estado. Se cambia subiendo db_password_version (ver secrets.tf en la raíz). Con
+# PostgreSQL, RDS crea solo la base de db_name (orders): catalogdb y cartdb las crea la tarea de
+# inicialización (ver el README de infra).
 resource "aws_db_instance" "this" {
   identifier = var.name
 
@@ -73,6 +84,8 @@ resource "aws_db_instance" "this" {
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
 
   apply_immediately = var.apply_immediately
+
+  depends_on = [aws_cloudwatch_log_group.db]
 }
 
 # ── Redis ─────────────────────────────────────────────────────────────────
@@ -91,14 +104,14 @@ resource "aws_security_group" "redis" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "redis" {
-  for_each = var.client_security_groups
+  for_each = var.redis_client_security_groups
 
   security_group_id            = aws_security_group.redis.id
   referenced_security_group_id = each.value
   ip_protocol                  = "tcp"
   from_port                    = 6379
   to_port                      = 6379
-  description                  = "Redis desde los servicios"
+  description                  = "Redis desde ${each.key}"
 }
 
 # Un nodo, como el redis de compose: checkout guarda ahí el checkout en curso, que se puede perder
