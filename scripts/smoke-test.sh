@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prueba de humo de Tero: recorre los seis servicios a través de la UI y del panel de admin.
 # También comprueba lo que va a exigir la nube: TLS hacia la base, Redis con contraseña y que
-# los servicios se reconecten solos si la base se reinicia (para eso reinicia db). Después
+# los servicios se reconecten solos si la base se cae (para eso frena y levanta db). Después
 # comprueba que los seis escriben sus logs en JSON, sin los secretos del .env, y qué publica
 # cada servicio en el host: solo ui y admin, y en 127.0.0.1.
 #
@@ -130,8 +130,11 @@ sin_tls="$(db_red disable)"
 case "$sin_tls" in *"no encryption"*) sin_tls=rechazada ;; esac
 check "db: rechaza una conexión por la red sin TLS" rechazada "$sin_tls"
 check "db: acepta la misma conexión con TLS" 1 "$(db_red require)"
-check "db: las conexiones de catalog, carts, orders y admin usan TLS" "cartdb:true,catalogdb:true,orders:true" \
-  "$(db_sql "select string_agg(distinct a.datname || ':' || s.ssl, ',' order by a.datname || ':' || s.ssl) from pg_stat_activity a join pg_stat_ssl s using (pid) where a.client_addr is not null")"
+# Cada servicio se identifica con application_name. admin cierra sus conexiones a los 10 s sin
+# uso: una consulta justo antes asegura que tenga alguna abierta.
+code -b "$TMP/jar" "$ADMIN/admin/api/products" > /dev/null
+check "db: catalog, carts, orders y admin se conectan con TLS" "admin:true,carts:true,catalog:true,orders:true" \
+  "$(db_sql "select string_agg(distinct application_name || ':' || ssl, ',' order by application_name || ':' || ssl) from pg_stat_activity join pg_stat_ssl using (pid) where client_addr is not null")"
 check "redis: rechaza comandos sin contraseña" NOAUTH "$("${COMPOSE[@]}" exec -T redis redis-cli ping 2>&1 | tr -d '\r' | awk 'NR == 1 { print $1 }')"
 
 # /topology devuelve solo el tipo de persistencia, sin la URL de Redis ni el endpoint de la base.
@@ -143,21 +146,35 @@ topology() { # MSYS_NO_PATHCONV: en Git Bash, /nodejs/bin/node se convertiría e
 check "checkout: /topology sin la URL de Redis" '{"persistenceProvider":"redis"}' "$(topology http://127.0.0.1:8080/topology)"
 check "catalog: /topology sin el endpoint de la base" '{"persistenceProvider":"postgres"}' "$(topology http://catalog:8080/topology)"
 
-# Reinicio de la base, como en un mantenimiento o un failover de RDS: los servicios se tienen que
-# reconectar solos y responder al primer intento, sin reiniciarlos. Las pruebas de logs de más
-# abajo cubren también lo que escriben mientras tanto.
+# La base se cae, como en un mantenimiento o un failover de RDS. Mientras está caída, los servicios
+# responden con error pero no se caen. Cuando vuelve, se reconectan solos y responden al primer
+# intento. Las pruebas de logs de más abajo cubren también lo que escriben mientras tanto.
+reinicios() { # cuántas veces reinició compose a cada servicio con base (restart: on-failure)
+  local s id out=""
+  for s in catalog carts orders admin; do
+    id="$("${COMPOSE[@]}" ps -q "$s")"
+    out="$out$s=$(docker inspect --format '{{.RestartCount}}' "$id" 2>&1),"
+  done
+  echo "${out%,}"
+}
+antes="$(reinicios)"
 db_id="$("${COMPOSE[@]}" ps -q db)"
-"${COMPOSE[@]}" restart db > /dev/null 2>&1
+code -b "$TMP/jar" "$ADMIN/admin/api/products" > /dev/null   # admin con conexiones abiertas
+"${COMPOSE[@]}" stop db > /dev/null 2>&1
+check "carts via ui: con la base caída responde 500" 500 "$(code "$UI/api/carts/$CID")"
+check "admin: con la base caída responde 500, sin caerse" 500 "$(code -b "$TMP/jar" "$ADMIN/admin/api/products")"
+"${COMPOSE[@]}" start db > /dev/null 2>&1
 for i in $(seq 1 60); do
   [ "$(docker inspect --format '{{.State.Health.Status}}' "$db_id" 2>&1)" = healthy ] && break
   sleep 1
 done
-check "db: vuelve a estar healthy después del reinicio" healthy "$(docker inspect --format '{{.State.Health.Status}}' "$db_id" 2>&1)"
-check "carts via ui: lee el carrito después del reinicio de la base" 200 "$(code "$UI/api/carts/$CID")"
-check "catalog via ui: lista los productos después del reinicio de la base" 200 "$(code "$UI/api/catalog/products")"
+check "db: vuelve a estar healthy" healthy "$(docker inspect --format '{{.State.Health.Status}}' "$db_id" 2>&1)"
+check "carts via ui: lee el carrito cuando vuelve la base" 200 "$(code "$UI/api/carts/$CID")"
+check "catalog via ui: lista los productos cuando vuelve la base" 200 "$(code "$UI/api/catalog/products")"
 ORDEN='{"shippingAddress":{"firstName":"Ana","lastName":"Prueba","address1":"Calle 1234","city":"Montevideo","state":"MVD","zipCode":"11000","email":"ana@example.com"},"items":[{"productId":"smoke-item","name":"Item de prueba","quantity":1,"price":150}]}'
-check "orders via ui: guarda una orden después del reinicio de la base" 201 "$(code -X POST -H 'Content-Type: application/json' -d "$ORDEN" "$UI/api/orders")"
-check "admin: lee los productos después del reinicio de la base" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/products")"
+check "orders via ui: guarda una orden cuando vuelve la base" 201 "$(code -X POST -H 'Content-Type: application/json' -d "$ORDEN" "$UI/api/orders")"
+check "admin: lee los productos cuando vuelve la base" 200 "$(code -b "$TMP/jar" "$ADMIN/admin/api/products")"
+check "catalog, carts, orders y admin no se reiniciaron" "$antes" "$(reinicios)"
 
 # Logs: los seis servicios escriben una línea JSON por evento, con los mismos campos
 for s in ui catalog carts orders checkout admin; do
