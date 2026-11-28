@@ -54,8 +54,18 @@ run "plan_del_ambiente" {
   }
 
   assert {
-    condition     = var.environment != "prod" || (var.db_multi_az && var.db_deletion_protection && var.db_final_snapshot && var.enable_nat_gateway)
+    condition     = var.environment != "prod" || (var.db_multi_az && var.deletion_protection && var.db_final_snapshot && var.enable_nat_gateway)
     error_message = "Prod tiene que tener la base Multi-AZ, protegida contra borrado, con snapshot final, y las tareas detrás de un NAT."
+  }
+
+  assert {
+    condition     = aws_lb.this.enable_deletion_protection == var.deletion_protection
+    error_message = "La protección contra borrado del ALB tiene que seguir a deletion_protection, para poder apagarla desde el .tfvars."
+  }
+
+  assert {
+    condition     = module.network.app_assign_public_ip == !var.enable_nat_gateway
+    error_message = "Con NAT, las tareas van sin IP pública, en las subredes privadas."
   }
 
   assert {

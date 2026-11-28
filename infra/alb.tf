@@ -51,7 +51,7 @@ resource "aws_lb" "this" {
   security_groups    = [aws_security_group.alb.id]
 
   drop_invalid_header_fields = true
-  enable_deletion_protection = var.environment == "prod"
+  enable_deletion_protection = var.deletion_protection
 }
 
 # Un target group por servicio expuesto. El health check es el /health de cada servicio, el

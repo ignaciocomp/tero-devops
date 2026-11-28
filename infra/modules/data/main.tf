@@ -32,6 +32,14 @@ resource "aws_vpc_security_group_ingress_rule" "db" {
 # en el estado. Se cambia subiendo db_password_version (ver secrets.tf en la raíz). Con
 # PostgreSQL, RDS crea solo la base de db_name (orders): catalogdb y cartdb las crea la tarea de
 # inicialización (ver el README de infra).
+# Un sufijo que cambia cada vez que se crea la base: así cada destroy deja su propio snapshot final,
+# y el segundo no choca con el del primero (DBSnapshotAlreadyExists).
+resource "random_id" "final_snapshot" {
+  count = var.db_final_snapshot ? 1 : 0
+
+  byte_length = 4
+}
+
 resource "aws_db_instance" "this" {
   identifier = var.name
 
@@ -58,7 +66,7 @@ resource "aws_db_instance" "this" {
   copy_tags_to_snapshot     = true
   deletion_protection       = var.db_deletion_protection
   skip_final_snapshot       = !var.db_final_snapshot
-  final_snapshot_identifier = var.db_final_snapshot ? "${var.name}-final" : null
+  final_snapshot_identifier = var.db_final_snapshot ? "${var.name}-final-${random_id.final_snapshot[0].hex}" : null
 
   # Los logs de PostgreSQL (errores, conexiones rechazadas) van a CloudWatch Logs, junto a los
   # de los servicios.

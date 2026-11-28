@@ -28,7 +28,7 @@ module "data" {
   db_instance_class        = var.db_instance_class
   db_multi_az              = var.db_multi_az
   db_backup_retention_days = var.db_backup_retention_days
-  db_deletion_protection   = var.db_deletion_protection
+  db_deletion_protection   = var.deletion_protection
   db_final_snapshot        = var.db_final_snapshot
   redis_node_type          = var.redis_node_type
 

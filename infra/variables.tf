@@ -97,7 +97,7 @@ variable "db_backup_retention_days" {
   type = number
 }
 
-variable "db_deletion_protection" {
+variable "deletion_protection" {
   type = bool
 }
 
