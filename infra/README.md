@@ -4,7 +4,7 @@ La misma configuración levanta los tres ambientes (Dev, Test y Prod) en AWS. Ca
 
 Los ambientes corren en el **AWS Academy Learner Lab**. La decisión, lo que se probó y los riesgos aceptados están en el [ADR 0005](../docs/adr/0005-learner-lab-e-infraestructura.md).
 
-> **Antes del primer `apply`:** tiene que estar en `main` el #45 (TLS hacia la base y Redis con contraseña). RDS con PostgreSQL 16 rechaza las conexiones sin TLS, y Redis pide contraseña.
+> Las imágenes que se despliegan tienen que incluir el #45 (TLS hacia la base y Redis con contraseña), que ya está en `main`: RDS con PostgreSQL 16 rechaza las conexiones sin TLS, y Redis pide contraseña. Un `image_tag` anterior a ese merge no se conecta.
 
 ## Qué crea cada ambiente
 
@@ -68,9 +68,9 @@ Según la estimación del ADR 0005, Dev y Test cuestan unos USD 5,8 por día cad
 
 Además, la cuota de Fargate por defecto es de 6 vCPU, y con los tres ambientes prendidos un despliegue de Prod puede no entrar.
 
-### Pendiente de definir
+### En qué cuenta
 
-- **De quién es la cuenta.** Cada persona tiene su propio lab, y el bucket del estado vive en una cuenta. Los ambientes van en la cuenta de una sola persona, y la otra no puede hacer `plan` ni `apply` sin esas credenciales.
+Cada persona tiene su propio lab. Los tres ambientes y el bucket del estado van en **el lab de Nacho** (`ignaciocomp`). Así, el `plan` y el `apply` se corren con las credenciales de una sesión de ese lab, y el CD (#26) también.
 
 ## Uso
 
@@ -129,7 +129,26 @@ Cada clave tiene su versión en el `.tfvars` de cada ambiente. Para rotar, se su
 | `admin_secret_version` | La contraseña del panel y la clave de los JWT, en `tero-<ambiente>/admin` | admin. Las sesiones abiertas se cierran |
 | `redis_password_version` | La contraseña de Redis, en ElastiCache y en `tero-<ambiente>/redis` | checkout |
 
-Terraform genera el valor nuevo, lo escribe y fuerza el despliegue de los servicios que lo usan, porque ECS lee los secretos solo al arrancar cada tarea. Mientras se despliegan, por unos segundos, las tareas viejas pueden fallar al abrir conexiones nuevas a la base. Ninguna clave rota sola.
+Terraform genera el valor nuevo, lo escribe y fuerza el despliegue de los servicios que lo usan, porque ECS lee los secretos solo al arrancar cada tarea. Mientras se despliegan, por unos segundos, las tareas viejas pueden fallar al abrir conexiones nuevas a la base. Ninguna clave rota sola: cada cuánto se rotan está en el [ADR 0005](../docs/adr/0005-learner-lab-e-infraestructura.md#rotación-de-las-claves).
+
+#### Si la base o Redis quedan con otra clave que el secreto
+
+Terraform no guarda las claves: genera una nueva en cada corrida, y solo la manda a AWS cuando crea el recurso o cuando sube su versión. Si en una corrida se escribe solo uno de los dos lados, el recurso y el secreto quedan con claves distintas. Pasa en tres casos:
+
+- **Se reemplaza la base o el replication group.** El plan lo marca con `must be replaced`, por ejemplo al cambiar el motor, el subnet group o el cifrado. El recurso nuevo arranca con la clave de esa corrida, y el secreto se queda con la anterior.
+- **Un `apply` falla en el medio.** Por ejemplo, crea el secreto y falla al crear la base. El `apply` siguiente crea la base con otra clave.
+- **Se vuelve a crear el secreto** (por ejemplo, si cambia su nombre) y la base o Redis siguen.
+
+Se nota porque los servicios no se conectan: `password authentication failed` en los logs de catalog, carts, orders o admin, o `WRONGPASS` en los de checkout. La alarma de 5xx también se dispara.
+
+Se arregla igual que una rotación: subir la versión de esa clave y aplicar. Esa corrida escribe la misma clave nueva en los dos lados y redespliega los servicios que la usan:
+
+```bash
+# en envs/<ambiente>.tfvars: db_password_version = 2 (o redis_password_version)
+terraform apply -var-file=envs/<ambiente>.tfvars -var="image_tag=<SHA desplegado>"
+```
+
+Para no llegar a eso, si el plan va a reemplazar la base, el replication group o un secreto, conviene subir la versión de esa clave en el mismo `apply`. Si se destruye y se vuelve a crear todo el ambiente, no pasa: los dos lados se crean en la misma corrida, con la misma clave.
 
 ### 5. Apagar un ambiente
 
@@ -191,7 +210,9 @@ Ningún secreto queda en el repositorio, en el plan ni en el estado:
 
 ## Pendiente
 
-- **`terraform plan` y `apply` contra el lab,** una vez que entre el #45 y esté definida la cuenta. Recién ahí se cumple el criterio de "hecho" del #17.
+- **`terraform plan` y `apply` contra el lab de Nacho.** Recién ahí se cumple el criterio de "hecho" del #17.
+- **Pasar `CreateReplicationGroup` por el simulador** de IAM y sumarlo a la tabla del ADR 0005. El 27/11 se probó `CreateCacheCluster`, y Redis ahora es un replication group.
+- **Confirmar en el lab que la clave vieja de Redis deja de valer al rotarla.** El replication group no fija `auth_token_update_strategy`, y con `ROTATE` ElastiCache acepta las dos claves, la vieja y la nueva.
 - **Crear `catalogdb` y `cartdb`.** RDS crea solo `orders`, y en compose lo hace `init-db.sql`. En AWS hace falta una tarea única de ECS que corra ese script contra RDS antes del primer despliegue. Va con el #23.
 - **Imágenes privadas.** Si los paquetes de GHCR quedan privados, ECS necesita `repositoryCredentials` con un token en Secrets Manager, o hay que copiar las imágenes a ECR.
 - **Health check de contenedor.** Las imágenes son distroless, sin shell ni `curl`. Hoy el circuit breaker se guía por el health check de los ALB.

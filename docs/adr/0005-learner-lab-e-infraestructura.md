@@ -60,6 +60,18 @@ Además, la cuota de Fargate por defecto es de 6 vCPU por cuenta:
 
 Con los tres prendidos, un despliegue de Prod puede no entrar en la cuota.
 
+### En qué cuenta
+
+Los tres ambientes y el bucket del estado van en el lab de Nacho (`ignaciocomp`). Un solo lab evita dos estados y dos juegos de credenciales en el CD.
+
+### Rotación de las claves
+
+Ninguna clave rota sola (ver "Alternativas"). Con la rotación de RDS se pierde también lo que limitaba la vida de una clave robada por el riesgo de `require` del [ADR 0004](0004-tls-y-credenciales-hacia-los-datos.md). Por eso se rotan a mano, con el procedimiento del README de `infra/` ("Rotar una clave"):
+
+- **Las tres claves de Dev** (`db_password_version`, `admin_secret_version` y `redis_password_version`) se rotan cuando se revisa el riesgo de `require`: antes de desplegar Prod, y a más tardar el 2026-12-31.
+- **Test y Prod** estrenan claves cada vez que se vuelven a crear, así que solo se rotan si un ambiente queda prendido más de un mes.
+- **Cualquier ambiente**, en el momento, si una clave pudo quedar expuesta: en un log, en un issue, en el chat o en una captura.
+
 ### Riesgos aceptados
 
 Son hallazgos reales de Semgrep que quedan con `nosemgrep`, según el caso "riesgo aceptado" del [ADR 0003](0003-ci-y-quality-gates.md#cómo-se-maneja-una-excepción). Se revisan en la fecha indicada:
@@ -88,6 +100,7 @@ Los `nosemgrep` de `aws-cloudwatch-log-group-unencrypted` y `aws-secretsmanager-
 ## Consecuencias
 
 - Las credenciales del lab duran lo que la sesión (4 horas). Cada `plan` o `apply` necesita las credenciales de una sesión activa, y el CD (#26) también.
-- El bucket del estado vive en la cuenta del lab de una persona, y la otra no tiene acceso a esa cuenta. Hay que definir de quién es la cuenta donde viven los ambientes (ver el README de `infra/`).
+- Todo vive en el lab de Nacho. Franco no puede hacer `plan` ni `apply` sin las credenciales de una sesión de ese lab.
+- Las claves se generan en cada corrida y solo se escriben al crear el recurso o al subir su versión. Si una corrida escribe solo un lado (la base o Redis se reemplazan, o un `apply` falla en el medio), el recurso y su secreto quedan con claves distintas. Se arregla subiendo la versión de esa clave (README de `infra/`, "Rotar una clave").
 - Si el lab se reinicia o se termina el crédito, los ambientes se pierden. El Terraform y los secretos generados permiten volver a crearlos, pero los datos de la base se pierden, salvo los snapshots de Prod.
 - El crédito que quede no alcanza para tener Test y Prod prendidos de forma permanente.

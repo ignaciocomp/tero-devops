@@ -17,6 +17,10 @@
 #   orders y admin.
 # - admin_secret_version: clave del panel y de los JWT nuevas, y redespliegue de admin.
 # - redis_password_version: clave nueva en ElastiCache y en el secreto, y redespliegue de checkout.
+#
+# El valor efímero cambia en cada corrida y solo se escribe al crear el recurso o al subir la
+# versión. Si una corrida escribe un solo lado (se reemplaza la base o Redis, o un apply falla en
+# el medio), quedan con claves distintas: se arregla subiendo la versión (README, "Rotar una clave").
 
 ephemeral "random_password" "db" {
   length  = 32
