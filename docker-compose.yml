@@ -52,8 +52,8 @@ services:
       RETAIL_CATALOG_PERSISTENCE_DB_NAME: catalogdb
       RETAIL_CATALOG_PERSISTENCE_USER: retail_user
       RETAIL_CATALOG_PERSISTENCE_PASSWORD: "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env (ver .env.example)}"
-      # TLS hacia db (require es también el valor por defecto de los cuatro servicios con base)
-      RETAIL_CATALOG_PERSISTENCE_SSLMODE: require
+      # Sin variable de sslmode, a propósito: los cuatro servicios con base usan require por
+      # defecto, el mismo valor que van a tener en la nube, y así la prueba de humo lo prueba.
     restart: on-failure
     depends_on:
       db:
@@ -69,7 +69,6 @@ services:
       CART_POSTGRES_DB: cartdb
       CART_POSTGRES_USER: retail_user
       CART_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env (ver .env.example)}"
-      CART_POSTGRES_SSLMODE: require
       PORT: "8080"
     restart: on-failure
     depends_on:
@@ -85,7 +84,6 @@ services:
       RETAIL_ORDERS_PERSISTENCE_NAME: orders
       RETAIL_ORDERS_PERSISTENCE_USERNAME: retail_user
       RETAIL_ORDERS_PERSISTENCE_PASSWORD: "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env (ver .env.example)}"
-      RETAIL_ORDERS_PERSISTENCE_SSLMODE: require
     restart: on-failure
     depends_on:
       db:
@@ -128,7 +126,6 @@ services:
       DB_PORT: "5432"
       DB_USER: retail_user
       DB_PASSWORD: "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env (ver .env.example)}"
-      DB_SSLMODE: require
       ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Falta ADMIN_PASSWORD en .env (ver .env.example)}"
       ADMIN_JWT_SECRET: "${ADMIN_JWT_SECRET:?Falta ADMIN_JWT_SECRET en .env (ver .env.example)}"
@@ -143,7 +140,9 @@ volumes:
   db-data:
 
 configs:
-  # Compose arma este archivo con el valor del .env y lo copia al contenedor de redis.
+  # Compose arma este archivo con el valor del .env y lo copia al contenedor de redis. Las
+  # comillas simples hacen que Redis acepte espacios y signos en la clave (no una comilla simple).
+  # Compose no recrea redis si solo cambia la clave: ver "TLS y contraseñas" en el README.
   redis-conf:
     content: |
-      requirepass ${REDIS_PASSWORD:?Falta REDIS_PASSWORD en .env (ver .env.example)}
+      requirepass '${REDIS_PASSWORD:?Falta REDIS_PASSWORD en .env (ver .env.example)}'
