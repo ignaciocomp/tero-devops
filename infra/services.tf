@@ -7,7 +7,7 @@ locals {
   db_endpoint = "${module.data.db_address}:${module.data.db_port}"
   db_user     = module.data.db_username
   # Un campo del JSON del secreto: <arn>:<clave>::
-  db_password  = "${module.data.db_master_secret_arn}:password::"
+  db_password  = "${aws_secretsmanager_secret.db.arn}:password::"
   admin_secret = aws_secretsmanager_secret.admin.arn
 
   app_services = {
@@ -94,6 +94,14 @@ module "service" {
   environment = each.value.environment
   secrets     = each.value.secrets
 
+  # Al subir la versión de una clave, se redespliegan los servicios que la usan (ver secrets.tf).
+  redeploy_triggers = {
+    for k, v in {
+      db_password = contains(["catalog", "carts", "orders", "admin"], each.key) ? var.db_password_version : null
+      admin       = each.key == "admin" ? var.admin_secret_version : null
+    } : k => tostring(v) if v != null
+  }
+
   cluster_arn                   = aws_ecs_cluster.this.arn
   service_connect_namespace_arn = try(aws_service_discovery_http_namespace.this[0].arn, null)
   subnet_ids                    = module.network.app_subnet_ids
@@ -110,6 +118,7 @@ module "service" {
   # El secreto de admin tiene que tener valor, y los listeners (públicos e internos) tienen que
   # existir, antes de que ECS arranque tareas o registre targets.
   depends_on = [
+    aws_secretsmanager_secret_version.db,
     aws_secretsmanager_secret_version.admin,
     aws_iam_role_policy.execution_secrets,
     aws_lb_listener.ui,

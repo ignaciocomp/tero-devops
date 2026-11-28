@@ -119,3 +119,23 @@ variable "service_connect" {
   type        = bool
   default     = false
 }
+
+variable "db_password_version" {
+  description = "Versión de la contraseña de PostgreSQL. Al subirla, Terraform genera una clave nueva, la escribe en RDS y en el secreto, y redespliega catalog, carts, orders y admin."
+  type        = number
+
+  validation {
+    condition     = var.db_password_version >= 1 && floor(var.db_password_version) == var.db_password_version
+    error_message = "db_password_version tiene que ser un entero mayor o igual a 1."
+  }
+}
+
+variable "admin_secret_version" {
+  description = "Versión de la contraseña del panel de admin y de la clave de los JWT. Al subirla, Terraform genera valores nuevos y redespliega admin."
+  type        = number
+
+  validation {
+    condition     = var.admin_secret_version >= 1 && floor(var.admin_secret_version) == var.admin_secret_version
+    error_message = "admin_secret_version tiene que ser un entero mayor o igual a 1."
+  }
+}

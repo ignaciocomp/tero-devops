@@ -22,6 +22,9 @@ module "data" {
   subnet_ids             = module.network.private_subnet_ids
   client_security_groups = { app = aws_security_group.app.id }
 
+  db_password         = ephemeral.random_password.db.result
+  db_password_version = var.db_password_version
+
   db_instance_class        = var.db_instance_class
   db_multi_az              = var.db_multi_az
   db_backup_retention_days = var.db_backup_retention_days

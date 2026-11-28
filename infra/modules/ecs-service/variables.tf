@@ -94,3 +94,9 @@ variable "log_retention_days" {
 variable "region" {
   type = string
 }
+
+variable "redeploy_triggers" {
+  description = "Valores que, al cambiar, fuerzan un despliegue nuevo. Por ejemplo, la versión de una clave que el servicio lee de Secrets Manager."
+  type        = map(string)
+  default     = {}
+}

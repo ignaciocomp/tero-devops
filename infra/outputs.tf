@@ -25,9 +25,9 @@ output "db_address" {
   value = module.data.db_address
 }
 
-output "db_master_secret_arn" {
-  description = "Secreto de Secrets Manager con el usuario y la contraseña de PostgreSQL (lo maneja RDS)."
-  value       = module.data.db_master_secret_arn
+output "db_secret_arn" {
+  description = "Secreto de Secrets Manager con el usuario y la contraseña de PostgreSQL."
+  value       = aws_secretsmanager_secret.db.arn
 }
 
 output "admin_secret_arn" {

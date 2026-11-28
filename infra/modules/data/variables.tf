@@ -31,6 +31,17 @@ variable "db_engine_version" {
   default     = "16"
 }
 
+variable "db_password" {
+  description = "Contraseña del usuario maestro. Efímera: no queda en el estado."
+  type        = string
+  ephemeral   = true
+}
+
+variable "db_password_version" {
+  description = "Versión de la contraseña: al subirla, RDS recibe db_password."
+  type        = number
+}
+
 variable "db_instance_class" {
   type = string
 }

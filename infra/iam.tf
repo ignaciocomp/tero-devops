@@ -51,7 +51,7 @@ data "aws_iam_policy_document" "read_secrets" {
   statement {
     actions = ["secretsmanager:GetSecretValue"]
     resources = [
-      module.data.db_master_secret_arn,
+      aws_secretsmanager_secret.db.arn,
       aws_secretsmanager_secret.admin.arn,
     ]
   }

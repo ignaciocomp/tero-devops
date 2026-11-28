@@ -28,3 +28,7 @@ db_final_snapshot        = false
 redis_node_type          = "cache.t4g.micro"
 
 secret_recovery_window_days = 0
+
+# Versión de cada clave: subirla rota la clave y redespliega los servicios que la usan.
+db_password_version  = 1
+admin_secret_version = 1

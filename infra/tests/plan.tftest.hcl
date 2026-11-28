@@ -64,6 +64,25 @@ run "plan_del_ambiente" {
   }
 }
 
+run "rotar_las_claves" {
+  command = plan
+
+  variables {
+    db_password_version  = 2
+    admin_secret_version = 3
+  }
+
+  assert {
+    condition     = aws_secretsmanager_secret_version.db.secret_string_wo_version == 2
+    error_message = "Subir db_password_version tiene que escribir una versión nueva del secreto de la base."
+  }
+
+  assert {
+    condition     = aws_secretsmanager_secret_version.admin.secret_string_wo_version == 3
+    error_message = "Subir admin_secret_version tiene que escribir una versión nueva del secreto de admin."
+  }
+}
+
 run "learner_lab_usa_el_labrole" {
   command = plan
 

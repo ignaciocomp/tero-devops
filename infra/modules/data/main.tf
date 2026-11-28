@@ -28,10 +28,10 @@ resource "aws_vpc_security_group_ingress_rule" "db" {
   description                  = "PostgreSQL desde los servicios"
 }
 
-# La contraseña del usuario maestro la genera y la guarda RDS en Secrets Manager
-# (manage_master_user_password): no pasa por Terraform ni queda en el estado. ECS la lee de ese
-# secreto. Con PostgreSQL, RDS crea solo la base de db_name (orders): catalogdb y cartdb las crea
-# la tarea de inicialización (ver el README de infra).
+# La contraseña del usuario maestro llega como valor efímero y se escribe con password_wo: no queda
+# en el estado. Se cambia subiendo db_password_version (ver secrets.tf en la raíz). Con
+# PostgreSQL, RDS crea solo la base de db_name (orders): catalogdb y cartdb las crea la tarea de
+# inicialización (ver el README de infra).
 resource "aws_db_instance" "this" {
   identifier = var.name
 
@@ -44,9 +44,10 @@ resource "aws_db_instance" "this" {
   storage_type               = "gp3"
   storage_encrypted          = true
 
-  db_name                     = "orders"
-  username                    = "retail_user"
-  manage_master_user_password = true
+  db_name             = "orders"
+  username            = "retail_user"
+  password_wo         = var.db_password
+  password_wo_version = var.db_password_version
 
   db_subnet_group_name   = aws_db_subnet_group.this.name
   vpc_security_group_ids = [aws_security_group.db.id]

@@ -69,6 +69,11 @@ resource "aws_ecs_service" "this" {
   # CD no da por desplegado un SHA que no arrancó, y la prueba de humo no le pega a tareas viejas.
   wait_for_steady_state = true
 
+  # ECS lee los secretos solo al arrancar cada tarea: cuando cambia una clave, redeploy_triggers
+  # cambia y fuerza un despliegue, así las tareas toman la nueva.
+  triggers             = var.redeploy_triggers
+  force_new_deployment = true
+
   # Si las tareas nuevas no llegan a estables, ECS frena el despliegue y vuelve a la task
   # definition anterior.
   deployment_circuit_breaker {

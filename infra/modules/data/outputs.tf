@@ -10,11 +10,6 @@ output "db_username" {
   value = aws_db_instance.this.username
 }
 
-# Secreto de Secrets Manager que crea RDS, un JSON con username y password.
-output "db_master_secret_arn" {
-  value = aws_db_instance.this.master_user_secret[0].secret_arn
-}
-
 output "db_identifier" {
   value = aws_db_instance.this.identifier
 }
