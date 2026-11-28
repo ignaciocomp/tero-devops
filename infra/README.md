@@ -31,6 +31,7 @@ Los ambientes corren en el **AWS Academy Learner Lab**. La decisión, lo que se 
 | Secretos | `secrets.tf` | Ver "Secretos" |
 | Roles de ECS | `iam.tf` | Ver "Learner Lab o cuenta propia" |
 | Grupos de logs | `modules/ecs-service` y `modules/data` | `/tero/<ambiente>/<servicio>` para los servicios, con los logs JSON tal cual (#24), y los de PostgreSQL, con vencimiento |
+| Alarmas, aviso por SNS y dashboard | `observability.tf` | Ver "Observabilidad" |
 
 ## Diferencias entre ambientes
 
@@ -164,7 +165,45 @@ terraform test -var-file=envs/dev.tfvars    # y lo mismo con test y prod
 - las reglas de Prod;
 - los dos caminos de IAM, y que en el lab las tareas van sin rol;
 - que subir la versión de una clave escribe un secreto nuevo;
-- que no se acepten un `image_tag` que no sea un SHA, un admin abierto a internet ni un mapa de servicios incompleto.
+- que no se acepten un `image_tag` que no sea un SHA, un admin abierto a internet ni un mapa de servicios incompleto;
+- las alarmas: una de 5xx y una de memoria por servicio, con sus umbrales, y que sin datos no se disparen;
+- que cada mail de `alarm_emails` se suscriba al tópico, y que no se acepten mails inválidos ni umbrales fuera de rango.
+
+## Observabilidad
+
+Está en `observability.tf`. Usa solo las métricas que AWS publica sin costo (`AWS/ApplicationELB`, `AWS/ECS`, `AWS/RDS` y `AWS/ElastiCache`) y los logs JSON de los servicios (#24). No hace falta Container Insights.
+
+### Alarmas
+
+| Alarma | Se dispara si | Runbook |
+|---|---|---|
+| `tero-<ambiente>-alb-5xx` | Más del 5 % de los requests a la tienda terminan en 5xx (de un servicio o del ALB), en 3 de los últimos 5 minutos, con al menos 20 requests por minuto | [alarma-5xx.md](../docs/runbooks/alarma-5xx.md) |
+| `tero-<ambiente>-<servicio>-memoria` (una por servicio) | La tarea que más memoria usa pasa el 85 % de lo reservado, 3 minutos seguidos. Al 100 %, ECS la mata | [alarma-memoria.md](../docs/runbooks/alarma-memoria.md) |
+
+Las dos avisan al tópico de SNS `tero-<ambiente>-alarmas`, al dispararse y al volver a OK. Los umbrales se cambian por ambiente con `alarm_5xx_percent`, `alarm_min_requests` y `alarm_memory_percent`. Cada runbook explica cómo probar su alarma: solo el aviso, con `aws cloudwatch set-alarm-state`, o de punta a punta en Dev.
+
+**Quién recibe los avisos.** Los mails no se versionan:
+
+```bash
+export TF_VAR_alarm_emails='["persona@example.com"]'
+terraform apply -var-file=envs/dev.tfvars -var="image_tag=<SHA>"
+```
+
+AWS manda un mail para confirmar la suscripción, y recién después llegan los avisos. Si alguien aplica sin la variable, Terraform borra las suscripciones. Por eso conviene dejarla exportada en la terminal desde la que se aplica, o pasarla en el CD.
+
+### Dashboard
+
+`terraform output dashboard_url` da el link. Se lee de arriba abajo:
+
+1. **Alarmas:** el estado de todas, de un vistazo.
+2. **La tienda (ALB público):**
+   - **Requests por minuto:** sirven de referencia; una caída brusca también es una señal.
+   - **Errores 5xx:** distingue los que devuelve un servicio de los del ALB. Un 503 del ALB indica que no hay tareas sanas.
+   - **Latencia p50 y p95.**
+3. **Cada servicio:** CPU y memoria por servicio. La memoria tiene marcado el umbral de la alarma.
+4. **Los datos:** CPU, conexiones y espacio libre de PostgreSQL, y CPU y conexiones de Redis. Muchas conexiones de golpe suelen ser reconexiones después de un corte.
+5. **Errores de los logs:** cuántos requests con 5xx registró cada servicio, y la tabla con los últimos errores (`service`, `msg`, `path`, `status`, `error`).
+6. **Llamados entre servicios:** requests y 5xx del ALB interno, solo en el Learner Lab. Si la tienda da 5xx y acá también, el problema está en un backend.
 
 ## Learner Lab o cuenta propia
 

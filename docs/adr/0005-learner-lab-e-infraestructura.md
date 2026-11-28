@@ -72,10 +72,11 @@ Son hallazgos reales de Semgrep que quedan con `nosemgrep`, según el caso "ries
 
 Los `nosemgrep` de `aws-cloudwatch-log-group-unencrypted` y `aws-secretsmanager-secret-unencrypted` no son riesgos aceptados, son **falsos positivos**: CloudWatch Logs y Secrets Manager ya cifran con claves de AWS, y la regla solo pide una clave propia de KMS.
 
-`trivy config` (que el CI no corre) marca además dos cosas:
+`trivy config` (que el CI no corre) marca además tres cosas:
 
 - La salida abierta de los servicios, que la necesitan para bajar imágenes de GHCR y llamar a las APIs de AWS. Achicarla pide endpoints de VPC y un registry dentro de AWS.
 - La base sin autenticación IAM: los servicios usan usuario y contraseña, con TLS ([ADR 0004](0004-tls-y-credenciales-hacia-los-datos.md)).
+- El tópico de SNS de las alarmas sin KMS. CloudWatch no puede publicar en un tópico cifrado con la clave que maneja AWS (`aws/sns`), así que haría falta una CMK propia, con su costo y una política de clave. Los avisos solo dicen qué alarma cambió de estado.
 
 ## Alternativas
 
