@@ -70,8 +70,9 @@ variable "execution_role_arn" {
 }
 
 variable "task_role_arn" {
-  description = "Rol de la aplicación. Ningún servicio llama hoy a las APIs de AWS."
+  description = "Rol de la aplicación, o null para que las tareas no tengan credenciales de AWS. Ningún servicio llama hoy a las APIs de AWS."
   type        = string
+  default     = null
 }
 
 variable "target_group_arn" {

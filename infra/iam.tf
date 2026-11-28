@@ -1,16 +1,19 @@
-# Roles de ECS. Hay dos caminos, según dónde se despliegue (lo decide el #15):
+# Roles de ECS. Hay dos caminos, según dónde se despliegue (ver el ADR 0005):
 #
-# - Learner Lab: no deja crear roles, así que con lab_role_name = "LabRole" se usa ese rol para
-#   las dos cosas. Tiene permisos de sobra: no es mínimo privilegio, y queda documentado.
+# - Learner Lab: no deja crear roles, así que con lab_role_name = "LabRole" ese rol es el de
+#   ejecución: con él ECS baja las imágenes, escribe los logs y lee los secretos. Esas credenciales
+#   no llegan a los contenedores. Las tareas van sin rol: LabRole tiene permisos casi de consola, y
+#   si fuera el rol de tarea, un RCE en ui o en admin (expuestos en el ALB) alcanzaría para leer
+#   los secretos, borrar la base o gastar el crédito. Ningún servicio llama a las APIs de AWS.
 # - Cuenta propia: con lab_role_name = null, Terraform crea un rol de ejecución que solo puede
-#   bajar imágenes, escribir logs y leer los dos secretos de este ambiente, y un rol de tarea sin
-#   permisos (ningún servicio llama hoy a las APIs de AWS).
+#   bajar imágenes, escribir logs y leer los secretos de este ambiente, y un rol de tarea sin
+#   permisos.
 
 locals {
   create_roles = var.lab_role_name == null
 
   execution_role_arn = local.create_roles ? aws_iam_role.execution[0].arn : data.aws_iam_role.lab[0].arn
-  task_role_arn      = local.create_roles ? aws_iam_role.task[0].arn : data.aws_iam_role.lab[0].arn
+  task_role_arn      = local.create_roles ? aws_iam_role.task[0].arn : null
 }
 
 data "aws_iam_role" "lab" {

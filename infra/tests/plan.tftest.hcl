@@ -80,6 +80,11 @@ run "learner_lab_usa_el_labrole" {
     condition     = local.execution_role_arn == "arn:aws:iam::123456789012:role/LabRole"
     error_message = "Con lab_role_name, ECS tiene que usar ese rol."
   }
+
+  assert {
+    condition     = local.task_role_arn == null
+    error_message = "Con lab_role_name, las tareas van sin rol: las credenciales de LabRole no pueden llegar a los contenedores."
+  }
 }
 
 run "cuenta_propia_crea_los_roles" {
