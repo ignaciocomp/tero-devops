@@ -6,12 +6,12 @@ import (
 	"log/slog"
 	"time"
 
-	"retail-store/catalog/config"
-	"retail-store/catalog/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
+	"retail-store/catalog/config"
+	"retail-store/catalog/model"
 )
 
 type Database struct {
@@ -26,7 +26,11 @@ type CatalogRepository interface {
 }
 
 func createPostgreSQLDatabase(config config.DatabaseConfiguration) (*gorm.DB, error) {
-	dsn := postgresDSN(config)
+	// Un sslmode inválido corta acá, sin los reintentos de abajo.
+	dsn, dsnErr := postgresDSN(config)
+	if dsnErr != nil {
+		return nil, dsnErr
+	}
 
 	var db *gorm.DB
 	var err error
