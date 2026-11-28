@@ -2,7 +2,7 @@
 
 - **Fecha:** 2026-11-22
 - **Código analizado:** `main` en `5f19eae` (antes) y la rama `ci/seguridad-y-build` con las correcciones (después).
-- **Actualizado:** 2026-11-27, con los hallazgos de la revisión manual que resolvió el PR del #18.
+- **Actualizado:** 2026-11-27, con los hallazgos de la revisión manual que resolvió el PR del #18, y 2026-11-28, con el Redis de la nube del PR #44.
 - **Herramientas:** Gitleaks 8.30.1, Trivy 0.76.2 y Semgrep 1.186.0, con las mismas versiones y opciones que el pipeline (ver el [ADR 0003](../adr/0003-ci-y-quality-gates.md)).
 
 ## Resumen
@@ -85,7 +85,7 @@ Cuando Debian publique un parche, el gate falla en la corrida siguiente, porque 
 
 ## Análisis estático (Semgrep)
 
-Ningún hallazgo ERROR. Los detalles, con los dos falsos positivos y la recomendación pendiente, están en el [informe de análisis estático](analisis-estatico.md). Desde el #18 hay además un riesgo aceptado silenciado con `nosemgrep` (el TLS sin verificar el certificado de admin), listado en la [tabla de riesgos aceptados](analisis-estatico.md#riesgos-aceptados) de ese informe.
+Ningún hallazgo ERROR. Los detalles, con los dos falsos positivos y la recomendación pendiente, están en el [informe de análisis estático](analisis-estatico.md). Hay además riesgos aceptados silenciados con `nosemgrep`: desde el #18, el TLS sin verificar el certificado de admin, y desde el #44, los listeners HTTP y los access logs de los ALB. Están listados en la [tabla de riesgos aceptados](analisis-estatico.md#riesgos-aceptados) de ese informe.
 
 ## Hallazgos de la revisión manual
 
@@ -94,7 +94,7 @@ Estos problemas no los detecta ninguna de las herramientas, pero aparecieron al 
 | Hallazgo | Riesgo | Recomendación |
 |---|---|---|
 | `retail_user` es superusuario de PostgreSQL (lo crea `POSTGRES_USER`) y lo usan catalog, carts, orders y admin | Un servicio comprometido puede leer y borrar todas las bases | Un usuario por servicio, con permisos solo sobre su base |
-| Redis sin contraseña | Hoy solo se llega desde la red interna de compose (PR #3), pero en la nube no alcanza | Autenticación y TLS en el Redis de la nube. **Del lado de la app, resuelto en el #18:** Redis pide contraseña en compose, y checkout la usa y se conecta con TLS si la URL es `rediss://`. Falta el ElastiCache con AUTH y TLS en Terraform |
+| Redis sin contraseña | Hoy solo se llega desde la red interna de compose (PR #3), pero en la nube no alcanza | Autenticación y TLS en el Redis de la nube. **Del lado de la app, resuelto en el #18:** Redis pide contraseña en compose, y checkout la usa y se conecta con TLS si la URL es `rediss://`. **En la nube, resuelto en el #44:** ElastiCache es un replication group con AUTH y TLS, que solo acepta a checkout, y checkout se conecta con `rediss://` y la contraseña de Secrets Manager |
 | catalog expone `/chaos/*` sin autenticación (`src/catalog/middleware/chaos.go`): agrega latencia, errores o marca el servicio como caído | Cualquiera que llegue a catalog puede degradar el servicio | No exponer catalog fuera de la red interna; deshabilitarlo o protegerlo en producción |
 | catalog (`/topology`) y el controlador raíz de checkout (`src/checkout/src/app.controller.ts`) devuelven el endpoint de la base y la URL de Redis | Exposición de detalles de infraestructura | Quitarlos o protegerlos. **Resuelto en el #18:** devuelven solo el tipo de persistencia |
 | `sslmode=disable` fijo en catalog (`src/catalog/repository/repository.go`) y orders (`src/orders/main.go`) | Conexión a la base sin TLS. RDS con PostgreSQL 16 exige TLS, así que en la nube ni siquiera conectaría | Hacerlo configurable (issue #18). **Resuelto en el #18:** `sslmode` configurable en los cuatro servicios con base, `require` por defecto, y compose exige TLS como RDS. `require` cifra, pero no verifica el certificado del servidor: es un riesgo aceptado ([ADR 0004](../adr/0004-tls-y-credenciales-hacia-los-datos.md)) |
@@ -106,7 +106,7 @@ Riesgos aceptados por el #18, con su justificación en el [ADR 0004](../adr/0004
 ## Recomendaciones
 
 1. Hacer obligatorios los checks del CI en la protección de `main` (issue #16), para que ningún merge saltee los gates.
-2. Corregir los hallazgos de la revisión manual antes de desplegar en la nube: usuarios por servicio, TLS hacia la base, Redis con autenticación y los endpoints de diagnóstico fuera del alcance público. El #18 resolvió TLS hacia la base, la contraseña de Redis del lado de la app y `/topology`. Faltan los usuarios por servicio, `/chaos/*`, el ElastiCache con AUTH y TLS en Terraform y los mensajes del driver en los errores de catalog y orders.
+2. Corregir los hallazgos de la revisión manual antes de desplegar en la nube: usuarios por servicio, TLS hacia la base, Redis con autenticación y los endpoints de diagnóstico fuera del alcance público. El #18 resolvió TLS hacia la base, la contraseña de Redis del lado de la app y `/topology`, y el #44, el ElastiCache con AUTH y TLS. Faltan los usuarios por servicio, `/chaos/*` y los mensajes del driver en los errores de catalog y orders.
 3. Agregar un lockfile para carts (por ejemplo `pip-compile --generate-hashes`), así el escaneo del repo también ve las dependencias transitivas. Hoy solo se ven en la imagen.
 4. Sumar Dependabot (acciones, módulos de Go, npm y pip) para recibir PRs de actualización antes de que el gate frene el pipeline.
 5. Revisar la tabla de vulnerabilidades sin parche antes del 2026-12-31. Si antes sale un parche, el gate lo avisa solo.

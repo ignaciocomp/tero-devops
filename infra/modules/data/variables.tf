@@ -1,0 +1,126 @@
+variable "name" {
+  description = "Prefijo de los nombres, por ejemplo tero-dev."
+  type        = string
+}
+
+variable "vpc_id" {
+  description = "VPC donde se crean la base, Redis y sus security groups."
+  type        = string
+}
+
+variable "subnet_ids" {
+  description = "Subredes privadas, en al menos dos zonas."
+  type        = list(string)
+}
+
+variable "db_client_security_groups" {
+  description = "Security groups que pueden conectarse a PostgreSQL, con un nombre fijo cada uno: { db_clients = sg-... }. Las claves tienen que ser fijas porque los IDs no se conocen hasta el apply."
+  type        = map(string)
+}
+
+variable "redis_client_security_groups" {
+  description = "Security groups que pueden conectarse a Redis, con el mismo formato que db_client_security_groups."
+  type        = map(string)
+}
+
+variable "log_retention_days" {
+  description = "Días que CloudWatch Logs guarda los logs de PostgreSQL."
+  type        = number
+}
+
+variable "apply_immediately" {
+  description = "Si es false, los cambios que reinician la base esperan a la ventana de mantenimiento."
+  type        = bool
+  default     = true
+}
+
+# ── PostgreSQL ──
+
+variable "db_engine_version" {
+  description = "Versión mayor de PostgreSQL, la misma que usa compose."
+  type        = string
+  default     = "16"
+}
+
+variable "db_password" {
+  description = "Contraseña del usuario maestro. Efímera: no queda en el estado."
+  type        = string
+  ephemeral   = true
+}
+
+variable "db_password_version" {
+  description = "Versión de la contraseña: al subirla, RDS recibe db_password."
+  type        = number
+}
+
+variable "db_instance_class" {
+  description = "Tipo de instancia de RDS."
+  type        = string
+}
+
+variable "db_allocated_storage" {
+  description = "GB iniciales."
+  type        = number
+  default     = 20
+}
+
+variable "db_max_allocated_storage" {
+  description = "Hasta cuántos GB puede crecer solo el disco."
+  type        = number
+  default     = 50
+}
+
+variable "db_multi_az" {
+  description = "Si es true, RDS mantiene una réplica en otra zona."
+  type        = bool
+}
+
+variable "db_backup_retention_days" {
+  description = "Días de backups automáticos. Con 0 no hay backups ni restauración a un momento dado."
+  type        = number
+
+  validation {
+    condition     = var.db_backup_retention_days >= 0 && var.db_backup_retention_days <= 35
+    error_message = "db_backup_retention_days tiene que estar entre 0 y 35."
+  }
+}
+
+variable "db_deletion_protection" {
+  description = "Protección contra borrado de la base."
+  type        = bool
+}
+
+variable "db_final_snapshot" {
+  description = "Si es true, al destruir la base se saca un último snapshot."
+  type        = bool
+}
+
+# ── Redis ──
+
+variable "redis_engine_version" {
+  description = "Versión de Redis. Con 7.x, la contraseña (AUTH) y TLS van juntos."
+  type        = string
+  default     = "7.1"
+}
+
+variable "redis_parameter_group" {
+  description = "Tiene que coincidir con la versión mayor de redis_engine_version."
+  type        = string
+  default     = "default.redis7"
+}
+
+variable "redis_password" {
+  description = "Contraseña de Redis (AUTH). Efímera: no queda en el estado."
+  type        = string
+  ephemeral   = true
+}
+
+variable "redis_password_version" {
+  description = "Versión de la contraseña de Redis: al subirla, ElastiCache recibe redis_password."
+  type        = number
+}
+
+variable "redis_node_type" {
+  description = "Tipo de nodo de ElastiCache."
+  type        = string
+}

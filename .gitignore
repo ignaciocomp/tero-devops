@@ -32,6 +32,8 @@ __pycache__/
 .terraform/
 *.tfstate
 *.tfstate.*
+# Planes guardados con -out: llevan los valores del plan
+*.tfplan
 
 # Sistema operativo y editores
 .DS_Store

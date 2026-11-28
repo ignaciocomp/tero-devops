@@ -31,6 +31,11 @@ Hallazgos reales que responden a una decisión escrita en un ADR, silenciados co
 | Hallazgo | Severidad | Dónde | Por qué se acepta | Mejora prevista | Desde | Revisión |
 |---|---|---|---|---|---|---|
 | `bypass-tls-verification` (`rejectUnauthorized: false`) | WARNING | `src/admin/src/app.ts`, en `dbSsl` | `DB_SSLMODE=require` cifra la conexión a la base sin verificar el certificado, igual que `sslmode=require` en los otros tres servicios. Es el valor por defecto, para conectarse a RDS sin el bundle de su CA ([ADR 0004](../adr/0004-tls-y-credenciales-hacia-los-datos.md)) | `verify-full` con el bundle de CA de RDS (`NODE_EXTRA_CA_CERTS` en admin) | 2026-11-27 | 2026-12-31 |
+| `insecure-load-balancer-tls-version` (listeners HTTP) | WARNING | `infra/alb.tf`: el 80 y el 8081 del ALB público | No hay dominio propio para emitir un certificado en ACM. admin queda cerrado salvo para `admin_allowed_cidrs` ([ADR 0005](../adr/0005-learner-lab-e-infraestructura.md#riesgos-aceptados)) | Dominio y certificado de ACM, con un redirect de 80 a 443 | 2026-11-28 | 2026-12-31 |
+| `insecure-load-balancer-tls-version` (listeners HTTP) | WARNING | `infra/alb.tf`: los cuatro del ALB interno | El tráfico no sale de la VPC, y el ALB interno solo acepta conexiones de los servicios ([ADR 0005](../adr/0005-learner-lab-e-infraestructura.md#riesgos-aceptados)) | TLS también adentro, con una CA privada, si se usa una cuenta propia | 2026-11-28 | 2026-12-31 |
+| `aws-elb-access-logs-not-enabled` | WARNING | `infra/alb.tf`: los dos ALB | Los access logs piden un bucket S3 con su política. Mientras, cada request queda en los logs JSON de los servicios y el ALB publica sus métricas en CloudWatch ([ADR 0005](../adr/0005-learner-lab-e-infraestructura.md#riesgos-aceptados)) | Bucket S3 de access logs con vencimiento | 2026-11-28 | 2026-12-31 |
+
+Los `nosemgrep` de `infra/` que no están en esta tabla son falsos positivos (grupos de logs y secretos "sin cifrar", que ya cifran claves de AWS). Están explicados en el ADR 0005.
 
 ## Interpretación
 

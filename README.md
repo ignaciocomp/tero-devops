@@ -75,8 +75,8 @@ El stack local se comporta como la nube, así lo que se prueba acá y en el CI e
 - **La base exige TLS**, como RDS con PostgreSQL 16 (`rds.force_ssl=1`). PostgreSQL arranca con `ssl=on` y el certificado de prueba (*snakeoil*) que trae la imagen, y [`pg_hba.conf`](pg_hba.conf) rechaza las conexiones por la red que no usan TLS.
 - **catalog, carts, orders y admin se conectan con TLS.** Cada uno tiene su variable de `sslmode` (ver [Variables de entorno](#variables-de-entorno)), que acepta `disable`, `require` (el valor por defecto) o `verify-full`. Con `require`, la conexión va cifrada, pero no se verifica el certificado del servidor. `verify-full` necesita el certificado de la CA de RDS en la imagen, que todavía no está: sin él, el servicio no se conecta. Con cualquier otro valor el servicio no arranca, incluidos `prefer` y `allow`, que pueden caer a texto plano.
 - **Redis pide contraseña** (`REDIS_PASSWORD`), como un ElastiCache con AUTH. checkout la recibe aparte de la URL, en `RETAIL_CHECKOUT_PERSISTENCE_REDIS_PASSWORD`. Con `rediss://` en la URL, checkout se conecta con TLS, que ElastiCache exige para usar AUTH. En local Redis no tiene TLS, así que ese camino recién se prueba en la nube. Si se cambia `REDIS_PASSWORD` en el `.env`, `docker compose up -d` recrea checkout pero no redis, que se queda con la clave vieja: hay que correr también `docker compose up -d --force-recreate redis`.
-- **Las contraseñas de la base pueden tener cualquier carácter**, también `$`. catalog y orders arman la conexión a PostgreSQL como URL, con el usuario y la contraseña escapados, y catalog lee la contraseña tal cual del entorno. Las claves que genera RDS llevan puntuación.
-- **Si la base se cae o se reinicia** (un mantenimiento o un failover de RDS), los servicios responden con error mientras tanto, pero no se caen, y cuando vuelve se reconectan solos. catalog y orders descartan las conexiones cortadas del pool. admin también, y responde 500 si una consulta falla. carts reabre su conexión y repite la operación una vez, con a lo sumo un intento de reconexión cada 2 s mientras la base no está. Cada servicio se identifica en la base con `application_name`, así en `pg_stat_activity` se ve de quién es cada conexión. Una salvedad para la nube: la clave que maneja RDS rota cada 7 días y ECS no se la actualiza a las tareas que ya corren, así que después de una rotación las conexiones nuevas fallan hasta un despliegue nuevo. Se resuelve en la infraestructura (ver el ADR 0004).
+- **Las contraseñas de la base pueden tener cualquier carácter**, también `$`. catalog y orders arman la conexión a PostgreSQL como URL, con el usuario y la contraseña escapados, y catalog lee la contraseña tal cual del entorno.
+- **Si la base se cae o se reinicia** (un mantenimiento o un failover de RDS), los servicios responden con error mientras tanto, pero no se caen, y cuando vuelve se reconectan solos. catalog y orders descartan las conexiones cortadas del pool. admin también, y responde 500 si una consulta falla. carts reabre su conexión y repite la operación una vez, con a lo sumo un intento de reconexión cada 2 s mientras la base no está. Cada servicio se identifica en la base con `application_name`, así en `pg_stat_activity` se ve de quién es cada conexión. En la nube la clave de la base no rota sola: se rota a mano, y Terraform redespliega los servicios que la usan (ver [Rotar una clave](infra/README.md#4-rotar-una-clave)).
 - **`/topology`** de catalog y checkout devuelve solo el tipo de persistencia, sin el endpoint de la base ni la URL de Redis.
 
 La prueba de humo, que corre en el CI en cada PR, comprueba casi todo esto. Intenta una conexión sin TLS, mira en `pg_stat_ssl` que estén cifradas las conexiones de los cuatro servicios (que en compose usan el `sslmode` por defecto, como en la nube), le pide a Redis un comando sin contraseña y consulta `/topology`. Después frena `db`: mientras está caída, carts y admin tienen que responder 500 sin caerse. Cuando vuelve, los cuatro servicios con base tienen que responder al primer intento, y ninguno se tiene que haber reiniciado. En el CI, además, la contraseña de la base lleva espacio, comillas y signos, así se prueba el escape. Lo que no cubre: `rediss://` y `verify-full`.
@@ -143,6 +143,10 @@ Cada PR y cada push a `main` corren el workflow [`.github/workflows/ci.yml`](.gi
 Por ahora el pipeline avisa pero no impide el merge: eso empieza cuando sus checks sean obligatorios en la protección de `main` (issue #16).
 
 Solo en un push a `main`, y si pasó todo lo anterior, las seis imágenes se publican en GHCR como `ghcr.io/ignaciocomp/tero-<servicio>:<SHA del commit>`. Así se sabe exactamente qué código corre cada imagen. El resultado de cada gate aparece en el resumen de la corrida, en la pestaña Actions. Los hallazgos, lo que se corrigió y las excepciones están en el [informe de seguridad](docs/informes/seguridad.md) y en el [informe de análisis estático](docs/informes/analisis-estatico.md).
+
+## Infraestructura
+
+Los tres ambientes (Dev, Test y Prod) se definen con Terraform en [`infra/`](infra/README.md): ECS Fargate detrás de un ALB, RDS PostgreSQL, ElastiCache Redis y los secretos en Secrets Manager. Cada ambiente tiene su `.tfvars` y su estado en S3. Corren en el AWS Academy Learner Lab: la decisión y sus consecuencias están en el [ADR 0005](docs/adr/0005-learner-lab-e-infraestructura.md).
 
 ---
 
@@ -304,6 +308,11 @@ tero-devops/
 ├── docs/
 │   ├── adr/            # Decisiones de arquitectura (ADR)
 │   └── informes/       # Informes de seguridad y de análisis estático
+├── infra/              # Terraform: Dev, Test y Prod en AWS (ver infra/README.md)
+│   ├── envs/           # Un .tfvars por ambiente
+│   ├── backends/       # Estado en S3, uno por ambiente
+│   ├── modules/        # network, ecs-service y data
+│   └── tests/          # terraform test, con providers simulados
 ├── scripts/
 │   └── smoke-test.sh   # Prueba de humo del stack
 └── src/

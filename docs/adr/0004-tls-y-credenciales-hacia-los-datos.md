@@ -3,6 +3,11 @@
 - **Estado:** aceptada
 - **Fecha:** 2026-11-27
 - **Relacionada con:** el issue #18 ("Ajustar la app para correr en la nube"), el Terraform del PR #44 y los hallazgos de la revisión manual del [informe de seguridad](../informes/seguridad.md).
+- **Actualización (2026-11-28):** el Terraform del PR #44 cambió cuatro supuestos de este ADR (el detalle está en el [ADR 0005](0005-learner-lab-e-infraestructura.md)):
+  - **La clave de la base ya no la genera RDS.** La genera Terraform, solo con letras y números, y no rota sola: se rota a mano subiendo `db_password_version`, lo que también redespliega catalog, carts, orders y admin. Quedan viejas la puntuación de las claves de RDS (en el Contexto y en Consecuencias) y la rotación cada 7 días. El escape de la contraseña sigue haciendo falta para cualquier otra clave, y el CI lo sigue probando.
+  - **La rotación ya no limita la vida de una clave robada** por el riesgo de `require`. El ADR 0005 define cada cuánto se rota a mano.
+  - **Redis ya tiene AUTH y TLS en la nube:** es un `aws_elasticache_replication_group` con `transit_encryption_enabled` y `auth_token_wo`, y checkout se conecta con `rediss://` y su contraseña.
+  - **A la base entran solo catalog, carts, orders y admin** (security group `db_clients`), no los seis servicios. La suplantación del endpoint sigue igual: los controles de red no la evitan, y `require` no verifica el certificado.
 
 ## Contexto
 
