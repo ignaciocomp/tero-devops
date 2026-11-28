@@ -27,3 +27,8 @@ output "redis_port" {
   description = "Puerto de Redis."
   value       = aws_elasticache_replication_group.this.port
 }
+
+output "redis_cluster_id" {
+  description = "Identificador del nodo de Redis, la dimensión CacheClusterId de las métricas de AWS/ElastiCache."
+  value       = one(aws_elasticache_replication_group.this.member_clusters)
+}

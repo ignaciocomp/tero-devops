@@ -47,3 +47,21 @@ output "admin_secret_arn" {
   description = "Secreto de Secrets Manager con la contraseña del panel de admin y la clave de los JWT."
   value       = aws_secretsmanager_secret.admin.arn
 }
+
+output "dashboard_url" {
+  description = "Dashboard de CloudWatch del ambiente. Qué mirar está en el README de infra."
+  value       = "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#dashboards/dashboard/${aws_cloudwatch_dashboard.this.dashboard_name}"
+}
+
+output "alarm_topic_arn" {
+  description = "Tópico de SNS al que avisan las alarmas. Para suscribir otro mail: alarm_emails."
+  value       = aws_sns_topic.alarms.arn
+}
+
+output "alarm_names" {
+  description = "Nombre de cada alarma: la de 5xx de la tienda y una de memoria por servicio. Sirven para probarlas con aws cloudwatch set-alarm-state (ver los runbooks)."
+  value = {
+    alb_5xx = aws_cloudwatch_metric_alarm.alb_5xx.alarm_name
+    memoria = { for k, a in aws_cloudwatch_metric_alarm.memory : k => a.alarm_name }
+  }
+}
